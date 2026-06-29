@@ -61,7 +61,7 @@ export async function iniciarReporteTecnico(request, env, reporteId) {
      LIMIT 1`
   ).bind(auth.session.usuario_id, reporteId).first()
   if (enProceso) {
-    return json({ ok: false, error: 'Ya tienes un trabajo en proceso. Termina o solicita cierre antes de iniciar otro.' }, 400)
+    return json({ ok: false, error: 'Ya tienes un reporte en proceso. Finalizalo antes de iniciar otro.' }, 400)
   }
 
   await env.DB.prepare("UPDATE reportes SET estado = 'EN_PROCESO' WHERE id = ?").bind(reporteId).run()

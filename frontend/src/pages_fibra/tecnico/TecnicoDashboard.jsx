@@ -490,26 +490,32 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
 
   const activeReportes = useMemo(
     () => reportes
-      .filter((reporte) => !['COMPLETADO', 'CANCELADO'].includes(reporte.estado))
+      .filter((reporte) => !['COMPLETADO', 'CANCELADO'].includes(getReporteStatus(reporte)))
       .sort(compareTecnicoReportes),
     [reportes]
   )
-  const currentReporte = activeReportes.find((reporte) => reporte.estado === 'EN_PROCESO') || null
-  const otherReportes = currentReporte ? activeReportes.filter((reporte) => reporte.id !== currentReporte.id) : activeReportes
-  const pendientes = activeReportes.filter((reporte) => reporte.estado === 'ASIGNADO').length
-  const enProceso = activeReportes.filter((reporte) => reporte.estado === 'EN_PROCESO').length
+  const currentReporte = activeReportes.find((reporte) => getReporteStatus(reporte) === 'EN_PROCESO') || null
+  const enviadosRevision = activeReportes.filter((reporte) => getReporteStatus(reporte) === 'PENDIENTE_CONFIRMACION')
+  const otherReportes = activeReportes.filter((reporte) => {
+    const estado = getReporteStatus(reporte)
+    return reporte.id !== currentReporte?.id && estado !== 'PENDIENTE_CONFIRMACION'
+  })
+  const pendientes = activeReportes.filter((reporte) => getReporteStatus(reporte) === 'ASIGNADO').length
+  const enProceso = activeReportes.filter((reporte) => getReporteStatus(reporte) === 'EN_PROCESO').length
   const hasEnProceso = enProceso > 0
 
   function renderReporteCard(reporte, { featured = false } = {}) {
+    const estado = getReporteStatus(reporte)
+
     return (
-      <article className={`tecnico-job-card ${featured ? 'featured-current' : ''} ${getStatusClass(reporte.estado)}`} key={reporte.id}>
+      <article className={`tecnico-job-card ${featured ? 'featured-current' : ''} ${getStatusClass(estado)}`} key={reporte.id}>
         {featured && <span className="current-report-label">REPORTE EN ATENCION</span>}
         <header>
           <div>
             <strong>#{reporte.id} - {reporte.comunidad_nombre}</strong>
             <span>{formatSubject(reporte)}</span>
           </div>
-          <b>{formatStatus(reporte.estado)}</b>
+          <b>{formatStatus(estado)}</b>
         </header>
 
         <dl>
@@ -527,7 +533,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
         )}
 
         <footer>
-          {reporte.estado === 'ASIGNADO' && (
+          {estado === 'ASIGNADO' && (
             <>
               <button
                 type="button"
@@ -538,11 +544,11 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                 Iniciar trabajo
               </button>
               {hasEnProceso && (
-                <p className="tecnico-status-note">Ya tienes un trabajo en proceso. Solicita cierre antes de iniciar otro.</p>
+                <p className="tecnico-status-note">Ya tienes un reporte en proceso. Finalizalo antes de iniciar otro.</p>
               )}
             </>
           )}
-          {reporte.estado === 'EN_PROCESO' && (
+          {estado === 'EN_PROCESO' && (
             <>
               <button type="button" className="tecnico-secondary-action" onClick={() => noEncontrado(reporte)}>
                 No encontre al cliente
@@ -552,10 +558,10 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
               </button>
             </>
           )}
-          {reporte.estado === 'PENDIENTE_CONFIRMACION' && (
-            <p className="tecnico-status-note">Solicitud enviada. Esperando confirmacion de Atencion/Soporte.</p>
+          {estado === 'PENDIENTE_CONFIRMACION' && (
+            <p className="tecnico-status-note">Enviado a revision. Pendiente de confirmacion por Atencion/Soporte.</p>
           )}
-          {reporte.estado === 'NO_LOCALIZADO' && (
+          {estado === 'NO_LOCALIZADO' && (
             <p className="tecnico-status-note">Cliente no localizado. Esperando revision de Atencion/Soporte.</p>
           )}
         </footer>
@@ -601,6 +607,18 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
 
         {!loading && otherReportes.map((reporte) => renderReporteCard(reporte))}
       </section>
+
+      {!loading && enviadosRevision.length > 0 && (
+        <section className="tecnico-review-section">
+          <div className="tecnico-section-title">
+            <span className="fiber-kicker">Enviados a revision</span>
+            <h2>Pendientes de confirmacion</h2>
+          </div>
+          <div className="tecnico-card-list">
+            {enviadosRevision.map((reporte) => renderReporteCard(reporte))}
+          </div>
+        </section>
+      )}
 
       {installationReporte && (
         <div className="installation-modal-backdrop" role="dialog" aria-modal="true">
@@ -1094,7 +1112,7 @@ function formatScheduledDate(reporte) {
 
 function compareTecnicoReportes(a, b) {
   const stateWeight = { EN_PROCESO: 1, ASIGNADO: 2, PENDIENTE_CONFIRMACION: 3, NO_LOCALIZADO: 4 }
-  const weightDiff = (stateWeight[a.estado] || 9) - (stateWeight[b.estado] || 9)
+  const weightDiff = (stateWeight[getReporteStatus(a)] || 9) - (stateWeight[getReporteStatus(b)] || 9)
   if (weightDiff) return weightDiff
 
   const routeA = a.orden_ruta == null ? Number.MAX_SAFE_INTEGER : Number(a.orden_ruta)
@@ -1102,6 +1120,10 @@ function compareTecnicoReportes(a, b) {
   if (routeA !== routeB) return routeA - routeB
 
   return Number(a.id) - Number(b.id)
+}
+
+function getReporteStatus(reporte) {
+  return String(reporte?.estado ?? '').trim().toUpperCase()
 }
 
 function getStatusClass(estado) {

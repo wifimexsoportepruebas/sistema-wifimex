@@ -284,6 +284,23 @@
   letter-spacing: 0;
 }
 
+.tecnico-review-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.tecnico-section-title {
+  display: grid;
+  gap: 4px;
+}
+
+.tecnico-section-title h2 {
+  margin: 0;
+  color: var(--fiber-black);
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
+}
+
 .tecnico-address-row {
   grid-column: 1 / -1;
 }
