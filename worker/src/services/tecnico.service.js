@@ -199,6 +199,13 @@ async function getInstalacionByReporte(env, reporteId) {
        instalaciones_fibra.titular_telefono,
        instalaciones_fibra.titular_direccion,
        instalaciones_fibra.titular_referencia,
+       instalaciones_fibra.contrato_marca_equipo,
+       instalaciones_fibra.contrato_numero_equipos,
+       instalaciones_fibra.contrato_aplica_reconexion,
+       instalaciones_fibra.contrato_cantidad_reconexion,
+       instalaciones_fibra.contrato_costo_equipo_penalidad,
+       instalaciones_fibra.contrato_costo_instalacion,
+       instalaciones_fibra.contrato_modalidad_pago,
        instalaciones_fibra.comentario_tecnico,
        instalaciones_fibra.fecha_instalacion,
        instalaciones_fibra.creado_en
@@ -247,6 +254,13 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
            titular_telefono = ?,
            titular_direccion = ?,
            titular_referencia = ?,
+           contrato_marca_equipo = ?,
+           contrato_numero_equipos = ?,
+           contrato_aplica_reconexion = ?,
+           contrato_cantidad_reconexion = ?,
+           contrato_costo_equipo_penalidad = ?,
+           contrato_costo_instalacion = ?,
+           contrato_modalidad_pago = ?,
            paquete_instalacion_id = ?,
            alfanumerico_equipo = ?,
            fibra_optica_metros = ?,
@@ -278,6 +292,13 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
       data.titular_telefono,
       data.titular_direccion,
       data.titular_referencia,
+      data.contrato_marca_equipo,
+      data.contrato_numero_equipos,
+      data.contrato_aplica_reconexion,
+      data.contrato_cantidad_reconexion,
+      data.contrato_costo_equipo_penalidad,
+      data.contrato_costo_instalacion,
+      data.contrato_modalidad_pago,
       data.paquete_instalacion_id,
       data.alfanumerico_equipo,
       data.fibra_optica_metros,
@@ -307,10 +328,13 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
        reporte_id, prospecto_id, cliente_id, servicio_fibra_id, comunidad_id, tecnico_id,
        titular_nombres, titular_apellido_paterno, titular_apellido_materno,
        titular_telefono, titular_direccion, titular_referencia,
+       contrato_marca_equipo, contrato_numero_equipos, contrato_aplica_reconexion,
+       contrato_cantidad_reconexion, contrato_costo_equipo_penalidad,
+       contrato_costo_instalacion, contrato_modalidad_pago,
        paquete_instalacion_id, alfanumerico_equipo, fibra_optica_metros, tensor_gancho, argollas, taquetes,
        sujetadores, roseta, terminal, puerto, caja_id, caja_terminal_id, potencia, firma_cliente_base64,
        firma_tecnico_base64, foto_router_r2_key, foto_router_content_type, comentario_tecnico
-     ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     reporte.id,
     reporte.prospecto_id,
@@ -323,6 +347,13 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
     data.titular_telefono,
     data.titular_direccion,
     data.titular_referencia,
+    data.contrato_marca_equipo,
+    data.contrato_numero_equipos,
+    data.contrato_aplica_reconexion,
+    data.contrato_cantidad_reconexion,
+    data.contrato_costo_equipo_penalidad,
+    data.contrato_costo_instalacion,
+    data.contrato_modalidad_pago,
     data.paquete_instalacion_id,
     data.alfanumerico_equipo,
     data.fibra_optica_metros,
@@ -354,6 +385,13 @@ async function validateInstalacionPayload(env, body, reporte) {
     titular_telefono: String(body?.titular_telefono ?? '').trim().replace(/\D/g, ''),
     titular_direccion: normalizeUpper(body?.titular_direccion),
     titular_referencia: nullableUpper(body?.titular_referencia),
+    contrato_marca_equipo: normalizeContractBrand(body?.contrato_marca_equipo, body?.contrato_marca_equipo_otro),
+    contrato_numero_equipos: Number(body?.contrato_numero_equipos ?? 1),
+    contrato_aplica_reconexion: normalizeYesNo(body?.contrato_aplica_reconexion, 'SI'),
+    contrato_cantidad_reconexion: parseNonNegativeNumber(body?.contrato_cantidad_reconexion ?? 350),
+    contrato_costo_equipo_penalidad: parseNonNegativeNumber(body?.contrato_costo_equipo_penalidad ?? 800),
+    contrato_costo_instalacion: parseNonNegativeNumber(body?.contrato_costo_instalacion ?? 0),
+    contrato_modalidad_pago: normalizePaymentMode(body?.contrato_modalidad_pago),
     paquete_instalacion_id: paqueteInstalacionId,
     alfanumerico_equipo: String(body?.alfanumerico_equipo ?? '').trim().toUpperCase(),
     fibra_optica_metros: parseNonNegativeNumber(body?.fibra_optica_metros),
@@ -394,6 +432,19 @@ async function validateInstalacionPayload(env, body, reporte) {
 
   if (!data.alfanumerico_equipo) {
     return { response: json({ ok: false, error: 'El alfanumerico del equipo es obligatorio' }, 400) }
+  }
+
+  const contractDataInvalid =
+    !data.contrato_marca_equipo ||
+    !Number.isInteger(data.contrato_numero_equipos) ||
+    data.contrato_numero_equipos < 1 ||
+    data.contrato_numero_equipos > 5 ||
+    data.contrato_cantidad_reconexion === null ||
+    data.contrato_costo_equipo_penalidad === null ||
+    data.contrato_costo_instalacion === null ||
+    !data.contrato_modalidad_pago
+  if (contractDataInvalid) {
+    return { response: json({ ok: false, error: 'Faltan datos para contrato. Revisa marca del equipo, numero de equipos, alfanumerico y firmas.' }, 400) }
   }
 
   if (!/^[A-Z0-9]+$/.test(data.alfanumerico_equipo)) {
@@ -544,4 +595,22 @@ function parseNonNegativeNumber(value) {
 function parseNonNegativeInteger(value) {
   const number = Number(value ?? 0)
   return Number.isInteger(number) && number >= 0 ? number : null
+}
+
+function normalizeContractBrand(value, otherValue) {
+  const selected = normalizeUpper(value || 'HUAWEI')
+  if (selected === 'OTRO') return normalizeUpper(otherValue) || null
+  const allowed = ['HUAWEI', 'ZTE', 'NOKIA', 'FIBERHOME', 'ATW']
+  return allowed.includes(selected) ? selected : null
+}
+
+function normalizeYesNo(value, fallback = 'SI') {
+  const normalized = normalizeUpper(value || fallback)
+  return normalized === 'NO' ? 'NO' : 'SI'
+}
+
+function normalizePaymentMode(value) {
+  const normalized = normalizeUpper(value || 'SIN DEFINIR')
+  const allowed = ['EFECTIVO', 'TRANSFERENCIA', 'DEPOSITO', 'TARJETA', 'OTRO', 'SIN DEFINIR']
+  return allowed.includes(normalized) ? normalized : 'SIN DEFINIR'
 }

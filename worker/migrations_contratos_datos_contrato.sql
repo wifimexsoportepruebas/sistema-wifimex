@@ -1,0 +1,9 @@
+ALTER TABLE contratos ADD COLUMN modalidad_pago TEXT;
+ALTER TABLE contratos ADD COLUMN aplica_reconexion TEXT;
+ALTER TABLE contratos ADD COLUMN cantidad_reconexion REAL;
+ALTER TABLE contratos ADD COLUMN marca_equipo TEXT;
+ALTER TABLE contratos ADD COLUMN numero_equipos INTEGER;
+ALTER TABLE contratos ADD COLUMN costo_equipo_penalidad REAL;
+ALTER TABLE contratos ADD COLUMN costo_instalacion REAL;
+ALTER TABLE contratos ADD COLUMN vigencia_contrato TEXT;
+ALTER TABLE contratos ADD COLUMN nombre_instalador TEXT;

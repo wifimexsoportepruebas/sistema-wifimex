@@ -10,6 +10,14 @@ const initialInstallationForm = {
   titular_direccion: '',
   paquete_instalacion_id: '',
   alfanumerico_equipo: '',
+  contrato_marca_equipo: 'HUAWEI',
+  contrato_marca_equipo_otro: '',
+  contrato_numero_equipos: '1',
+  contrato_costo_equipo_penalidad: '800',
+  contrato_costo_instalacion: '0',
+  contrato_aplica_reconexion: 'SI',
+  contrato_cantidad_reconexion: '350',
+  contrato_modalidad_pago: 'SIN DEFINIR',
   caja_id: '',
   caja_terminal_id: '',
   fibra_optica_metros: '0',
@@ -237,6 +245,14 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
         titular_direccion: instalacion?.titular_direccion ?? prospecto.direccion ?? '',
         paquete_instalacion_id: String(instalacion?.paquete_instalacion_id ?? data.paquete_default_id ?? ''),
         alfanumerico_equipo: instalacion?.alfanumerico_equipo ?? '',
+        contrato_marca_equipo: getKnownBrand(instalacion?.contrato_marca_equipo),
+        contrato_marca_equipo_otro: getKnownBrand(instalacion?.contrato_marca_equipo) === 'OTRO' ? instalacion?.contrato_marca_equipo ?? '' : '',
+        contrato_numero_equipos: String(instalacion?.contrato_numero_equipos ?? '1'),
+        contrato_costo_equipo_penalidad: String(instalacion?.contrato_costo_equipo_penalidad ?? '800'),
+        contrato_costo_instalacion: String(instalacion?.contrato_costo_instalacion ?? '0'),
+        contrato_aplica_reconexion: instalacion?.contrato_aplica_reconexion ?? 'SI',
+        contrato_cantidad_reconexion: String(instalacion?.contrato_cantidad_reconexion ?? '350'),
+        contrato_modalidad_pago: instalacion?.contrato_modalidad_pago ?? 'SIN DEFINIR',
         caja_id: instalacion?.caja_id ? String(instalacion.caja_id) : '',
         caja_terminal_id: instalacion?.caja_terminal_id ? String(instalacion.caja_terminal_id) : '',
         fibra_optica_metros: String(instalacion?.fibra_optica_metros ?? '0'),
@@ -280,7 +296,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
   function updateInstallationForm(field, value) {
     setInstallationForm((current) => ({
       ...current,
-      [field]: ['comentario', 'alfanumerico_equipo', 'titular_nombres', 'titular_apellido_paterno', 'titular_apellido_materno', 'titular_direccion'].includes(field) ? value.toUpperCase() : value,
+      [field]: ['comentario', 'alfanumerico_equipo', 'titular_nombres', 'titular_apellido_paterno', 'titular_apellido_materno', 'titular_direccion', 'contrato_marca_equipo_otro'].includes(field) ? value.toUpperCase() : value,
     }))
   }
 
@@ -402,6 +418,20 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
       return
     }
 
+    const contractBrand = installationForm.contrato_marca_equipo === 'OTRO'
+      ? installationForm.contrato_marca_equipo_otro.trim()
+      : installationForm.contrato_marca_equipo
+    const contractNumbers = [
+      Number(installationForm.contrato_numero_equipos),
+      Number(installationForm.contrato_costo_equipo_penalidad),
+      Number(installationForm.contrato_costo_instalacion),
+      Number(installationForm.contrato_cantidad_reconexion),
+    ]
+    if (!contractBrand || !Number.isInteger(contractNumbers[0]) || contractNumbers[0] < 1 || contractNumbers[0] > 5 || contractNumbers.some((number) => !Number.isFinite(number) || number < 0)) {
+      Swal.fire({ icon: 'warning', title: 'Datos para contrato incompletos', text: 'Faltan datos para contrato. Revisa marca del equipo, numero de equipos, alfanumerico y firmas.', confirmButtonColor: '#4274D9' })
+      return
+    }
+
     if (!installationForm.caja_id) {
       Swal.fire({ icon: 'warning', title: 'Caja obligatoria', text: 'Selecciona una caja de fibra.', confirmButtonColor: '#4274D9' })
       return
@@ -453,6 +483,14 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
       titular_direccion: installationForm.titular_direccion.trim().toUpperCase(),
       paquete_instalacion_id: Number(installationForm.paquete_instalacion_id),
       alfanumerico_equipo: installationForm.alfanumerico_equipo.trim().toUpperCase(),
+      contrato_marca_equipo: installationForm.contrato_marca_equipo,
+      contrato_marca_equipo_otro: installationForm.contrato_marca_equipo_otro.trim().toUpperCase(),
+      contrato_numero_equipos: Number(installationForm.contrato_numero_equipos),
+      contrato_costo_equipo_penalidad: Number(installationForm.contrato_costo_equipo_penalidad || 0),
+      contrato_costo_instalacion: Number(installationForm.contrato_costo_instalacion || 0),
+      contrato_aplica_reconexion: installationForm.contrato_aplica_reconexion,
+      contrato_cantidad_reconexion: Number(installationForm.contrato_cantidad_reconexion || 0),
+      contrato_modalidad_pago: installationForm.contrato_modalidad_pago,
       caja_id: Number(installationForm.caja_id),
       caja_terminal_id: Number(installationForm.caja_terminal_id),
       fibra_optica_metros: Number(installationForm.fibra_optica_metros || 0),
@@ -692,6 +730,50 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                 />
               </label>
             </div>
+            </section>
+
+            <section className="installation-form-section">
+              <h3>Datos para contrato</h3>
+              <div className="installation-form-grid">
+                <label>
+                  Marca del equipo
+                  <select value={installationForm.contrato_marca_equipo} onChange={(event) => updateInstallationForm('contrato_marca_equipo', event.target.value)} required>
+                    {['HUAWEI', 'ZTE', 'NOKIA', 'FIBERHOME', 'ATW', 'OTRO'].map((marca) => (
+                      <option key={marca} value={marca}>{marca}</option>
+                    ))}
+                  </select>
+                </label>
+                {installationForm.contrato_marca_equipo === 'OTRO' && (
+                  <label>
+                    Marca manual
+                    <input type="text" value={installationForm.contrato_marca_equipo_otro} onChange={(event) => updateInstallationForm('contrato_marca_equipo_otro', event.target.value)} required />
+                  </label>
+                )}
+                <label>
+                  Numero de equipos
+                  <select value={installationForm.contrato_numero_equipos} onChange={(event) => updateInstallationForm('contrato_numero_equipos', event.target.value)} required>
+                    {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+                <NumberField label="Costo equipo / penalidad" value={installationForm.contrato_costo_equipo_penalidad} onChange={(value) => updateInstallationForm('contrato_costo_equipo_penalidad', value)} step="0.01" />
+                <NumberField label="Costo de instalacion" value={installationForm.contrato_costo_instalacion} onChange={(value) => updateInstallationForm('contrato_costo_instalacion', value)} step="0.01" />
+                <label>
+                  Tarifa por reconexion
+                  <select value={installationForm.contrato_aplica_reconexion} onChange={(event) => updateInstallationForm('contrato_aplica_reconexion', event.target.value)} required>
+                    <option value="SI">SI</option>
+                    <option value="NO">NO</option>
+                  </select>
+                </label>
+                <NumberField label="Cantidad de reconexion" value={installationForm.contrato_cantidad_reconexion} onChange={(value) => updateInstallationForm('contrato_cantidad_reconexion', value)} step="0.01" />
+                <label>
+                  Modalidad de pago
+                  <select value={installationForm.contrato_modalidad_pago} onChange={(event) => updateInstallationForm('contrato_modalidad_pago', event.target.value)} required>
+                    {['SIN DEFINIR', 'EFECTIVO', 'TRANSFERENCIA', 'DEPOSITO', 'TARJETA', 'OTRO'].map((mode) => (
+                      <option key={mode} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </section>
 
             <section className="installation-form-section">
@@ -956,6 +1038,11 @@ function formatDistance(meters) {
 
 function toRadians(value) {
   return (value * Math.PI) / 180
+}
+
+function getKnownBrand(value) {
+  const brand = String(value || 'HUAWEI').toUpperCase()
+  return ['HUAWEI', 'ZTE', 'NOKIA', 'FIBERHOME', 'ATW'].includes(brand) ? brand : 'OTRO'
 }
 
 function SignaturePad({ onChange, clearSignal, initialValue }) {

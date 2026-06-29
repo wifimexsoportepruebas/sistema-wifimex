@@ -273,44 +273,67 @@ function ReportesAtencion({ apiUrl, token }) {
       title: 'Confirmar instalacion',
       html: buildInstallationConfirmationHtml(reporte, ciclosCorte),
       showCancelButton: true,
-      confirmButtonText: 'Confirmar instalacion',
+      confirmButtonText: 'Continuar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#4274D9',
       focusConfirm: false,
-      showLoaderOnConfirm: true,
-      allowOutsideClick: () => !Swal.isLoading(),
-      preConfirm: async () => {
+      preConfirm: () => {
         const cicloCorteId = document.getElementById('confirm-install-cycle')?.value
         const ipAsignada = document.getElementById('confirm-install-ip')?.value?.trim()
         if (!cicloCorteId) {
           Swal.showValidationMessage('Selecciona el ciclo de corte.')
           return false
         }
-
-        try {
-          const response = await fetch(`${apiUrl}/api/reportes/${reporte.id}/confirmar-instalacion`, {
-            method: 'POST',
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ciclo_corte_id: Number(cicloCorteId),
-              ip_asignada: ipAsignada || null,
-            }),
-          })
-          const data = await response.json().catch(() => ({}))
-          if (!response.ok) throw new Error(data.error ?? 'No se pudo confirmar la instalacion.')
-          return data
-        } catch (err) {
-          Swal.showValidationMessage(err.message)
+        if (!ipAsignada) {
+          Swal.showValidationMessage('Captura IP y ciclo de pago antes de generar el contrato.')
           return false
         }
+        return { ciclo_corte_id: Number(cicloCorteId), ip_asignada: ipAsignada }
       },
     })
 
     if (!result.isConfirmed || !result.value) return
+    const selectedCycle = ciclosCorte.find((ciclo) => Number(ciclo.id) === Number(result.value.ciclo_corte_id))
+    const preview = await Swal.fire({
+      title: 'Vista previa del contrato',
+      html: buildContractPreviewHtml(reporte, selectedCycle, result.value.ip_asignada),
+      showCancelButton: true,
+      showDenyButton: true,
+      confirmButtonText: 'Confirmar instalacion y generar contrato',
+      denyButtonText: 'Regresar a tecnico',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4274D9',
+      denyButtonColor: '#64748b',
+      width: 760,
+    })
+
+    if (preview.isDenied) {
+      await patchReporte(reporte, 'regresar-tecnico', {}, 'Reporte regresado al tecnico')
+      return
+    }
+
+    if (!preview.isConfirmed) return
+
+    let data
+    try {
+      const response = await fetch(`${apiUrl}/api/reportes/${reporte.id}/confirmar-instalacion`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.value),
+      })
+      data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error ?? 'No se pudo confirmar la instalacion.')
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#4274D9' })
+      return
+    }
+
     await Swal.fire({
       icon: 'success',
       title: 'Instalacion confirmada',
-      text: `Cliente creado: ${result.value.cliente?.numero_cliente ?? 'sin numero'}`,
+      text: data.contrato?.numero_contrato
+        ? `Instalacion confirmada y contrato generado correctamente: ${data.contrato.numero_contrato}`
+        : `Cliente creado: ${data.cliente?.numero_cliente ?? 'sin numero'}`,
       confirmButtonColor: '#4274D9',
     })
     await loadReportesConfirmacion()
@@ -646,6 +669,17 @@ function InstallationReview({ reporte, onViewPhoto }) {
       </section>
 
       <section>
+        <h4>Datos para contrato capturados por tecnico</h4>
+        <p><strong>Marca del equipo:</strong> {reporte.contrato_marca_equipo || 'Sin dato'}</p>
+        <p><strong>Numero de equipos:</strong> {reporte.contrato_numero_equipos || 'Sin dato'}</p>
+        <p><strong>Costo equipo / penalidad:</strong> {formatCurrency(reporte.contrato_costo_equipo_penalidad)}</p>
+        <p><strong>Costo de instalacion:</strong> {formatCurrency(reporte.contrato_costo_instalacion)}</p>
+        <p><strong>Tarifa por reconexion:</strong> {reporte.contrato_aplica_reconexion || 'Sin dato'}</p>
+        <p><strong>Cantidad de reconexion:</strong> {formatCurrency(reporte.contrato_cantidad_reconexion)}</p>
+        <p><strong>Modalidad de pago:</strong> {reporte.contrato_modalidad_pago || 'SIN DEFINIR'}</p>
+      </section>
+
+      <section>
         <h4>Evidencia</h4>
         <p><strong>Firma cliente:</strong> {reporte.firma_cliente_base64 ? 'Capturada' : 'Sin firma'}</p>
         <p><strong>Firma tecnico:</strong> {reporte.firma_tecnico_base64 ? 'Capturada' : 'Sin firma'}</p>
@@ -702,9 +736,62 @@ function buildInstallationConfirmationHtml(reporte, ciclosCorte) {
         </select>
       </label>
       <label>
-        IP asignada <span>Opcional</span>
-        <input id="confirm-install-ip" class="swal2-input" placeholder="172.20.5.10" />
+        IP asignada
+        <input id="confirm-install-ip" class="swal2-input" placeholder="172.20.5.10" required />
       </label>
+    </div>
+  `
+}
+
+function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
+  const prospectoNombre = fullName({
+    nombres: reporte.prospecto_nombres_original,
+    apellido_paterno: reporte.prospecto_apellido_paterno_original,
+    apellido_materno: reporte.prospecto_apellido_materno_original,
+  })
+  const titularNombre = fullName({
+    nombres: reporte.titular_nombres,
+    apellido_paterno: reporte.titular_apellido_paterno,
+    apellido_materno: reporte.titular_apellido_materno,
+  })
+
+  return `
+    <div class="confirm-installation-modal contract-preview-modal">
+      <section>
+        <h4>Cliente</h4>
+        <p><strong>Prospecto:</strong> ${escapeHtml(prospectoNombre)}</p>
+        <p><strong>Titular:</strong> ${escapeHtml(titularNombre)}</p>
+        <p><strong>Telefono movil/fijo:</strong> ${escapeHtml(reporte.titular_telefono || reporte.prospecto_telefono || 'Sin telefono')}</p>
+        <p><strong>Direccion:</strong> ${escapeHtml(reporte.titular_direccion || reporte.prospecto_direccion || 'Sin direccion')}</p>
+      </section>
+      <section>
+        <h4>Servicio</h4>
+        <p><strong>Paquete:</strong> ${escapeHtml(reporte.paquete_instalacion_nombre || reporte.paquete_instalacion_id || 'Sin paquete')}</p>
+        <p><strong>Ciclo:</strong> ${escapeHtml(ciclo?.nombre || 'Sin ciclo')}</p>
+        <p><strong>IP asignada:</strong> ${escapeHtml(ipAsignada)}</p>
+        <p><strong>Alfanumerico:</strong> ${escapeHtml(reporte.alfanumerico_equipo || 'Sin dato')}</p>
+      </section>
+      <section>
+        <h4>Contrato</h4>
+        <p><strong>Marca equipo:</strong> ${escapeHtml(reporte.contrato_marca_equipo || 'Sin dato')}</p>
+        <p><strong>Numero de equipos:</strong> ${escapeHtml(reporte.contrato_numero_equipos || 'Sin dato')}</p>
+        <p><strong>Costo equipo / penalidad:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_equipo_penalidad))}</p>
+        <p><strong>Costo instalacion:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_instalacion))}</p>
+        <p><strong>Reconexion:</strong> ${escapeHtml(reporte.contrato_aplica_reconexion || 'Sin dato')} - ${escapeHtml(formatCurrency(reporte.contrato_cantidad_reconexion))}</p>
+        <p><strong>Modalidad pago:</strong> ${escapeHtml(reporte.contrato_modalidad_pago || 'SIN DEFINIR')}</p>
+      </section>
+      <section>
+        <h4>Instalacion</h4>
+        <p><strong>Tecnico:</strong> ${escapeHtml(reporte.tecnico_nombre || 'TECNICO WIFIMEX')}</p>
+        <p><strong>Caja:</strong> ${escapeHtml(reporte.codigo_caja || reporte.caja_nombre || reporte.puerto || 'Sin caja')}</p>
+        <p><strong>Terminal:</strong> ${escapeHtml(reporte.caja_terminal_numero || reporte.terminal || 'Sin terminal')}</p>
+        <p><strong>Potencia:</strong> ${escapeHtml(reporte.potencia ?? 'Sin dato')}</p>
+      </section>
+      <section>
+        <h4>Firmas</h4>
+        <p><strong>Firma cliente:</strong> ${reporte.firma_cliente_base64 ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma tecnico:</strong> ${reporte.firma_tecnico_base64 ? 'Capturada' : 'Sin firma'}</p>
+      </section>
     </div>
   `
 }
@@ -752,6 +839,10 @@ function formatTime(date) {
 
 function formatNumber(value) {
   return value === null || value === undefined || value === '' ? 0 : value
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
 }
 
 function escapeHtml(value) {

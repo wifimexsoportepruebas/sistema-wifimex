@@ -10,3 +10,11 @@ database_id = "2e079aa2-cf90-4bae-a944-19fbdd7bebe9"
 [[r2_buckets]]
 binding = "INSTALACIONES_BUCKET"
 bucket_name = "wifimex-instalaciones"
+
+[[r2_buckets]]
+binding = "CONTRATOS_BUCKET"
+bucket_name = "contratos"
+
+[[kv_namespaces]]
+binding = "CONTRATOS_KV"
+id = "a3ced05dee2946c4952da71a9e73ca39"

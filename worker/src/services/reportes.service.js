@@ -2,6 +2,7 @@ import { json } from '../utils/response.js'
 import { requireAuth } from '../utils/auth.js'
 import { addFilter } from '../utils/validators.js'
 import { todayDate } from '../utils/dates.js'
+import { generarContratoParaInstalacion, validarContratoInstalacionDisponible } from './contratos.service.js'
 
 const INSTALLATION_CONFIRMED_COMMENT = 'INSTALACION CONFIRMADA. PROSPECTO CONVERTIDO A CLIENTE Y SERVICIO ACTIVO.'
 
@@ -190,6 +191,13 @@ export async function listReportes(request, env, url) {
        instalaciones_fibra.titular_telefono,
        instalaciones_fibra.titular_direccion,
        instalaciones_fibra.titular_referencia,
+       instalaciones_fibra.contrato_marca_equipo,
+       instalaciones_fibra.contrato_numero_equipos,
+       instalaciones_fibra.contrato_aplica_reconexion,
+       instalaciones_fibra.contrato_cantidad_reconexion,
+       instalaciones_fibra.contrato_costo_equipo_penalidad,
+       instalaciones_fibra.contrato_costo_instalacion,
+       instalaciones_fibra.contrato_modalidad_pago,
        instalaciones_fibra.paquete_instalacion_id,
        paquete_instalacion.nombre AS paquete_instalacion_nombre,
        instalaciones_fibra.alfanumerico_equipo,
@@ -477,6 +485,7 @@ export async function confirmarInstalacionReporte(request, env, reporteId) {
   const cicloCorteId = Number(body?.ciclo_corte_id)
   const ipAsignada = nullableText(body?.ip_asignada)
   if (!cicloCorteId) return json({ ok: false, error: 'Selecciona el ciclo de corte.' }, 400)
+  if (!ipAsignada) return json({ ok: false, error: 'Captura la IP asignada.' }, 400)
 
   const reporte = await getReporteById(env, reporteId)
   if (!reporte) return json({ ok: false, error: 'Reporte no encontrado' }, 404)
@@ -491,70 +500,102 @@ export async function confirmarInstalacionReporte(request, env, reporteId) {
   const validation = await validateInstalacionConfirmacion(env, reporteId, cicloCorteId)
   if (validation.response) return validation.response
 
-  const { instalacion, prospecto, paquete, comunidad, nextNumber, numeroCliente } = validation
-  const qrToken = crypto.randomUUID()
+  const contratoValidation = await validarContratoInstalacionDisponible(env, validation.instalacion.id)
+  if (contratoValidation.response) return contratoValidation.response
 
-  const batchResults = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO clientes (
-         numero_cliente, nombres, apellido_paterno, apellido_materno, telefono,
-         direccion, referencia, comunidad_id, prospecto_id, estado_cliente, qr_token, fecha_registro
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, datetime('now'))`
-    ).bind(
-      numeroCliente,
-      normalizeUpper(instalacion.titular_nombres),
-      normalizeOptionalUpper(instalacion.titular_apellido_paterno),
-      normalizeOptionalUpper(instalacion.titular_apellido_materno),
-      nullableText(instalacion.titular_telefono),
-      nullableText(instalacion.titular_direccion),
-      nullableText(prospecto?.referencia),
-      instalacion.comunidad_id,
-      instalacion.prospecto_id,
-      qrToken
-    ),
-    env.DB.prepare(
-      `INSERT INTO servicios_fibra (
-         cliente_id, paquete_id, ciclo_corte_id, alfanumerico_equipo, ip_asignada,
-         fecha_instalacion, precio_mensual, estado_servicio, caja_id, caja_terminal_id
-       ) VALUES ((SELECT id FROM clientes WHERE numero_cliente = ?), ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, ?)`
-    ).bind(
-      numeroCliente,
-      instalacion.paquete_instalacion_id,
-      cicloCorteId,
-      normalizeUpper(instalacion.alfanumerico_equipo),
-      ipAsignada,
-      nullableText(instalacion.fecha_instalacion),
-      Number(paquete.precio_mensual ?? 0),
-      instalacion.caja_id,
-      instalacion.caja_terminal_id
-    ),
-    env.DB.prepare(
-      `UPDATE instalaciones_fibra
-       SET cliente_id = (SELECT id FROM clientes WHERE numero_cliente = ?),
-           servicio_fibra_id = (
-             SELECT servicios_fibra.id
-             FROM servicios_fibra
-             JOIN clientes ON clientes.id = servicios_fibra.cliente_id
-             WHERE clientes.numero_cliente = ?
-             ORDER BY servicios_fibra.id DESC
-             LIMIT 1
-           )
-       WHERE id = ?`
-    ).bind(numeroCliente, numeroCliente, instalacion.id),
-    env.DB.prepare(
-      `UPDATE caja_terminales
-       SET estado = 'OCUPADO',
-           servicio_fibra_id = (
-             SELECT servicios_fibra.id
-             FROM servicios_fibra
-             JOIN clientes ON clientes.id = servicios_fibra.cliente_id
-             WHERE clientes.numero_cliente = ?
-             ORDER BY servicios_fibra.id DESC
-             LIMIT 1
-           ),
-           actualizado_en = datetime('now')
-       WHERE id = ?`
-    ).bind(numeroCliente, instalacion.caja_terminal_id),
+  const { instalacion, prospecto, paquete, comunidad, nextNumber, numeroCliente, alreadyConverted } = validation
+  let clienteId = instalacion.cliente_id ? Number(instalacion.cliente_id) : null
+  let servicioId = instalacion.servicio_fibra_id ? Number(instalacion.servicio_fibra_id) : null
+
+  if (!alreadyConverted) {
+    const qrToken = crypto.randomUUID()
+    const batchResults = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO clientes (
+           numero_cliente, nombres, apellido_paterno, apellido_materno, telefono,
+           direccion, referencia, comunidad_id, prospecto_id, estado_cliente, qr_token, fecha_registro
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, datetime('now'))`
+      ).bind(
+        numeroCliente,
+        normalizeUpper(instalacion.titular_nombres),
+        normalizeOptionalUpper(instalacion.titular_apellido_paterno),
+        normalizeOptionalUpper(instalacion.titular_apellido_materno),
+        nullableText(instalacion.titular_telefono),
+        nullableText(instalacion.titular_direccion),
+        nullableText(prospecto?.referencia),
+        instalacion.comunidad_id,
+        instalacion.prospecto_id,
+        qrToken
+      ),
+      env.DB.prepare(
+        `INSERT INTO servicios_fibra (
+           cliente_id, paquete_id, ciclo_corte_id, alfanumerico_equipo, ip_asignada,
+           fecha_instalacion, precio_mensual, estado_servicio, caja_id, caja_terminal_id
+         ) VALUES ((SELECT id FROM clientes WHERE numero_cliente = ?), ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, ?)`
+      ).bind(
+        numeroCliente,
+        instalacion.paquete_instalacion_id,
+        cicloCorteId,
+        normalizeUpper(instalacion.alfanumerico_equipo),
+        ipAsignada,
+        nullableText(instalacion.fecha_instalacion),
+        Number(paquete.precio_mensual ?? 0),
+        instalacion.caja_id,
+        instalacion.caja_terminal_id
+      ),
+      env.DB.prepare(
+        `UPDATE instalaciones_fibra
+         SET cliente_id = (SELECT id FROM clientes WHERE numero_cliente = ?),
+             servicio_fibra_id = (
+               SELECT servicios_fibra.id
+               FROM servicios_fibra
+               JOIN clientes ON clientes.id = servicios_fibra.cliente_id
+               WHERE clientes.numero_cliente = ?
+               ORDER BY servicios_fibra.id DESC
+               LIMIT 1
+             )
+         WHERE id = ?`
+      ).bind(numeroCliente, numeroCliente, instalacion.id),
+      env.DB.prepare(
+        `UPDATE caja_terminales
+         SET estado = 'OCUPADO',
+             servicio_fibra_id = (
+               SELECT servicios_fibra.id
+               FROM servicios_fibra
+               JOIN clientes ON clientes.id = servicios_fibra.cliente_id
+               WHERE clientes.numero_cliente = ?
+               ORDER BY servicios_fibra.id DESC
+               LIMIT 1
+             ),
+             actualizado_en = datetime('now')
+         WHERE id = ?`
+      ).bind(numeroCliente, instalacion.caja_terminal_id),
+      env.DB.prepare(
+        `UPDATE comunidades
+         SET siguiente_numero_cliente = CASE
+           WHEN ? > COALESCE(siguiente_numero_cliente, 0) THEN ?
+           ELSE siguiente_numero_cliente
+         END
+         WHERE id = ?`
+      ).bind(nextNumber, nextNumber, comunidad.id),
+    ])
+
+    clienteId = batchResults?.[0]?.meta?.last_row_id
+    servicioId = batchResults?.[1]?.meta?.last_row_id
+  }
+
+  if (!clienteId || !servicioId) {
+    return json({ ok: false, error: 'No se pudo obtener cliente y servicio para generar el contrato.' }, 500)
+  }
+
+  const contrato = await generarContratoParaInstalacion(env, {
+    instalacionId: instalacion.id,
+    clienteId,
+    servicioFibraId: servicioId,
+    usuarioId: auth.session.usuario_id,
+  })
+
+  await env.DB.batch([
     env.DB.prepare(
       `UPDATE reportes
        SET estado = 'COMPLETADO',
@@ -563,27 +604,19 @@ export async function confirmarInstalacionReporte(request, env, reporteId) {
        WHERE id = ?`
     ).bind(INSTALLATION_CONFIRMED_COMMENT, reporteId),
     env.DB.prepare(
-      `UPDATE comunidades
-       SET siguiente_numero_cliente = CASE
-         WHEN ? > COALESCE(siguiente_numero_cliente, 0) THEN ?
-         ELSE siguiente_numero_cliente
-       END
-       WHERE id = ?`
-    ).bind(nextNumber, nextNumber, comunidad.id),
-    env.DB.prepare(
       `INSERT INTO reportes_seguimiento (reporte_id, usuario_id, estado, comentario, fecha_registro)
        VALUES (?, ?, 'COMPLETADO', ?, datetime('now'))`
     ).bind(reporteId, auth.session.usuario_id, INSTALLATION_CONFIRMED_COMMENT),
   ])
 
-  const clienteId = batchResults?.[0]?.meta?.last_row_id
-  const servicioId = batchResults?.[1]?.meta?.last_row_id
-
   return json({
     ok: true,
-    cliente: { id: clienteId, numero_cliente: numeroCliente },
+    cliente: { id: clienteId, numero_cliente: numeroCliente ?? instalacion.numero_cliente },
     servicio: { id: servicioId },
-    message: 'Instalacion confirmada y cliente creado correctamente.',
+    cliente_id: clienteId,
+    servicio_fibra_id: servicioId,
+    contrato,
+    message: 'Instalacion confirmada y contrato generado correctamente.',
   })
 }
 
@@ -727,19 +760,22 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   const instalacion = await env.DB.prepare(
     `SELECT
        instalaciones_fibra.*,
-       reportes.prospecto_id AS reporte_prospecto_id,
-       reportes.comunidad_id AS reporte_comunidad_id
-     FROM instalaciones_fibra
-     JOIN reportes ON reportes.id = instalaciones_fibra.reporte_id
-     WHERE instalaciones_fibra.reporte_id = ?
-     ORDER BY instalaciones_fibra.id DESC
-     LIMIT 1`
+        reportes.prospecto_id AS reporte_prospecto_id,
+        reportes.comunidad_id AS reporte_comunidad_id,
+        clientes.numero_cliente AS numero_cliente
+      FROM instalaciones_fibra
+      JOIN reportes ON reportes.id = instalaciones_fibra.reporte_id
+      LEFT JOIN clientes ON clientes.id = instalaciones_fibra.cliente_id
+      WHERE instalaciones_fibra.reporte_id = ?
+      ORDER BY instalaciones_fibra.id DESC
+      LIMIT 1`
   ).bind(reporteId).first()
 
   if (!instalacion) return { response: json({ ok: false, error: 'No se encontro la instalacion capturada por el tecnico.' }, 404) }
-  if (instalacion.cliente_id || instalacion.servicio_fibra_id) {
-    return { response: json({ ok: false, error: 'Esta instalacion ya fue convertida a cliente.' }, 409) }
+  if ((instalacion.cliente_id && !instalacion.servicio_fibra_id) || (!instalacion.cliente_id && instalacion.servicio_fibra_id)) {
+    return { response: json({ ok: false, error: 'La instalacion tiene una conversion incompleta. Revisa cliente y servicio antes de confirmar.' }, 409) }
   }
+  const alreadyConverted = Boolean(instalacion.cliente_id && instalacion.servicio_fibra_id)
 
   const requiredFields = [
     ['titular_nombres', 'Falta el nombre final del titular.'],
@@ -754,6 +790,13 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
     ['potencia', 'Falta la potencia.'],
     ['firma_cliente_base64', 'Falta la firma del cliente.'],
     ['firma_tecnico_base64', 'Falta la firma del tecnico.'],
+    ['contrato_marca_equipo', 'Falta la marca del equipo para contrato.'],
+    ['contrato_numero_equipos', 'Falta el numero de equipos para contrato.'],
+    ['contrato_aplica_reconexion', 'Falta indicar tarifa de reconexion para contrato.'],
+    ['contrato_cantidad_reconexion', 'Falta la cantidad de reconexion para contrato.'],
+    ['contrato_costo_equipo_penalidad', 'Falta el costo equipo / penalidad para contrato.'],
+    ['contrato_costo_instalacion', 'Falta el costo de instalacion para contrato.'],
+    ['contrato_modalidad_pago', 'Falta la modalidad de pago para contrato.'],
   ]
 
   for (const [field, message] of requiredFields) {
@@ -766,6 +809,15 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   instalacion.comunidad_id = instalacion.comunidad_id ?? instalacion.reporte_comunidad_id
   if (!instalacion.comunidad_id) return { response: json({ ok: false, error: 'La instalacion no tiene comunidad vinculada.' }, 400) }
   if (!instalacion.prospecto_id) return { response: json({ ok: false, error: 'La instalacion no tiene prospecto vinculado.' }, 400) }
+  if (Number(instalacion.contrato_numero_equipos) < 1 || Number(instalacion.contrato_numero_equipos) > 5) {
+    return { response: json({ ok: false, error: 'El numero de equipos para contrato debe estar entre 1 y 5.' }, 400) }
+  }
+  for (const field of ['contrato_cantidad_reconexion', 'contrato_costo_equipo_penalidad', 'contrato_costo_instalacion']) {
+    const value = Number(instalacion[field])
+    if (!Number.isFinite(value) || value < 0) {
+      return { response: json({ ok: false, error: 'Los importes del contrato no pueden ser negativos.' }, 400) }
+    }
+  }
 
   const ciclo = await env.DB.prepare('SELECT id FROM ciclos_corte WHERE id = ? AND activo = 1').bind(cicloCorteId).first()
   if (!ciclo) return { response: json({ ok: false, error: 'El ciclo de corte seleccionado no existe.' }, 400) }
@@ -790,8 +842,10 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   const terminalValidation = await validateInstalacionTerminalConfirmacion(env, instalacion)
   if (terminalValidation.response) return terminalValidation
 
-  const { nextNumber, numeroCliente } = await generateNextClientNumber(env, comunidad)
-  return { instalacion, prospecto, paquete, comunidad, nextNumber, numeroCliente }
+  const nextClient = alreadyConverted
+    ? { nextNumber: null, numeroCliente: instalacion.numero_cliente }
+    : await generateNextClientNumber(env, comunidad)
+  return { instalacion, prospecto, paquete, comunidad, ...nextClient, alreadyConverted }
 }
 
 async function validateInstalacionTerminalConfirmacion(env, instalacion) {
@@ -812,7 +866,7 @@ async function validateInstalacionTerminalConfirmacion(env, instalacion) {
   if (!terminal || Number(terminal.caja_id) !== Number(instalacion.caja_id)) {
     return { response: json({ ok: false, error: 'La terminal no pertenece a la caja seleccionada.' }, 400) }
   }
-  if (terminal.estado === 'OCUPADO' && terminal.servicio_fibra_id) {
+  if (terminal.estado === 'OCUPADO' && terminal.servicio_fibra_id && Number(terminal.servicio_fibra_id) !== Number(instalacion.servicio_fibra_id)) {
     return { response: json({ ok: false, error: 'Esta terminal ya fue ocupada o reservada. Selecciona otra.' }, 409) }
   }
   if (terminal.estado === 'DAÑADO') {

@@ -1,6 +1,7 @@
 import { handleAuthRoutes } from './routes/auth.routes.js'
 import { handleClientesRoutes } from './routes/clientes.routes.js'
 import { handleComunidadesRoutes } from './routes/comunidades.routes.js'
+import { handleContratosRoutes } from './routes/contratos.routes.js'
 import { handleInfraestructuraRoutes } from './routes/infraestructura.routes.js'
 import { handleProspectosRoutes } from './routes/prospectos.routes.js'
 import { handleReportesRoutes } from './routes/reportes.routes.js'
@@ -48,6 +49,10 @@ export default {
 
       if (url.pathname.startsWith('/api/reportes')) {
         return withCors(await handleReportesRoutes(request, env, url))
+      }
+
+      if (url.pathname.startsWith('/api/contratos')) {
+        return withCors(await handleContratosRoutes(request, env, url))
       }
 
       return withCors(json({ error: 'Ruta no encontrada' }, 404))
