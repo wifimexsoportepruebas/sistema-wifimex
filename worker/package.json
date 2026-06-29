@@ -1,0 +1,16 @@
+{
+  "name": "wifimex-central-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 execute wifimex-central-local --local --file=database/schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.103.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
+  }
+}

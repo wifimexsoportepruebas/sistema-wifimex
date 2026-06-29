@@ -1,0 +1,12 @@
+name = "wifimex-central-worker"
+main = "src/index.js"
+compatibility_date = "2026-06-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sistema-fibra-central-db"
+database_id = "2e079aa2-cf90-4bae-a944-19fbdd7bebe9"
+
+[[r2_buckets]]
+binding = "INSTALACIONES_BUCKET"
+bucket_name = "wifimex-instalaciones"
