@@ -3,6 +3,10 @@ import { todayDate } from '../utils/dates.js'
 import { json } from '../utils/response.js'
 import { insertReporteSeguimiento } from './reportes.service.js'
 
+const COMUNIDADES_VIGENCIA_ESPECIAL = ['PALAPA', 'COEXCONTLAN', 'ATETETLA']
+const CONTRATO_VIGENCIAS_ESPECIALES = ['MINIMO 6 MESES', 'INSTALACION DE 1500']
+const CONTRATO_VIGENCIA_NORMAL = 'SIN PLAZO FORZOSO'
+
 export async function listReportesTecnicoHoy(request, env) {
   const auth = await requireAuth(request, env, ['TECNICO', 'TECNICO_FIBRA'])
   if (auth.response) return auth.response
@@ -150,6 +154,7 @@ async function getReporteTecnico(env, reporteId, usuarioId) {
     `SELECT
        reportes.id, reportes.estado, reportes.tecnico_id, reportes.tipo_reporte,
        reportes.prospecto_id, reportes.cliente_id, reportes.comunidad_id,
+       comunidades.nombre AS comunidad_nombre,
        prospectos.paquete_interes_id,
        prospectos.nombres AS prospecto_nombres,
        prospectos.apellido_paterno AS prospecto_apellido_paterno,
@@ -157,8 +162,9 @@ async function getReporteTecnico(env, reporteId, usuarioId) {
        prospectos.telefono AS prospecto_telefono,
        prospectos.direccion AS prospecto_direccion,
        prospectos.referencia AS prospecto_referencia
-     FROM reportes
-     LEFT JOIN prospectos ON prospectos.id = reportes.prospecto_id
+    FROM reportes
+    JOIN comunidades ON comunidades.id = reportes.comunidad_id
+    LEFT JOIN prospectos ON prospectos.id = reportes.prospecto_id
      WHERE reportes.id = ? AND reportes.tecnico_id = ?`
   ).bind(reporteId, usuarioId).first()
 }
@@ -205,6 +211,7 @@ async function getInstalacionByReporte(env, reporteId) {
        instalaciones_fibra.contrato_cantidad_reconexion,
        instalaciones_fibra.contrato_costo_equipo_penalidad,
        instalaciones_fibra.contrato_costo_instalacion,
+       instalaciones_fibra.contrato_vigencia,
        instalaciones_fibra.comentario_tecnico,
        instalaciones_fibra.fecha_instalacion,
        instalaciones_fibra.creado_en
@@ -259,6 +266,7 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
            contrato_cantidad_reconexion = ?,
            contrato_costo_equipo_penalidad = ?,
            contrato_costo_instalacion = ?,
+           contrato_vigencia = ?,
            paquete_instalacion_id = ?,
            alfanumerico_equipo = ?,
            fibra_optica_metros = ?,
@@ -296,6 +304,7 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
       data.contrato_cantidad_reconexion,
       data.contrato_costo_equipo_penalidad,
       data.contrato_costo_instalacion,
+      data.contrato_vigencia,
       data.paquete_instalacion_id,
       data.alfanumerico_equipo,
       data.fibra_optica_metros,
@@ -327,11 +336,11 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
        titular_telefono, titular_direccion, titular_referencia,
        contrato_marca_equipo, contrato_numero_equipos, contrato_aplica_reconexion,
        contrato_cantidad_reconexion, contrato_costo_equipo_penalidad,
-       contrato_costo_instalacion,
+       contrato_costo_instalacion, contrato_vigencia,
        paquete_instalacion_id, alfanumerico_equipo, fibra_optica_metros, tensor_gancho, argollas, taquetes,
        sujetadores, roseta, terminal, puerto, caja_id, caja_terminal_id, potencia, firma_cliente_base64,
        firma_tecnico_base64, foto_router_r2_key, foto_router_content_type, comentario_tecnico
-     ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     reporte.id,
     reporte.prospecto_id,
@@ -350,6 +359,7 @@ async function saveInstalacionFibra(env, reporte, usuarioId, data, solucion) {
     data.contrato_cantidad_reconexion,
     data.contrato_costo_equipo_penalidad,
     data.contrato_costo_instalacion,
+    data.contrato_vigencia,
     data.paquete_instalacion_id,
     data.alfanumerico_equipo,
     data.fibra_optica_metros,
@@ -387,6 +397,7 @@ async function validateInstalacionPayload(env, body, reporte) {
     contrato_cantidad_reconexion: parseNonNegativeNumber(body?.contrato_cantidad_reconexion ?? 350),
     contrato_costo_equipo_penalidad: parseNonNegativeNumber(body?.contrato_costo_equipo_penalidad ?? 800),
     contrato_costo_instalacion: parseNonNegativeNumber(body?.contrato_costo_instalacion ?? 0),
+    contrato_vigencia: normalizeContratoVigencia(body?.contrato_vigencia, reporte.comunidad_nombre),
     paquete_instalacion_id: paqueteInstalacionId,
     alfanumerico_equipo: String(body?.alfanumerico_equipo ?? '').trim().toUpperCase(),
     fibra_optica_metros: parseNonNegativeNumber(body?.fibra_optica_metros),
@@ -436,7 +447,8 @@ async function validateInstalacionPayload(env, body, reporte) {
     data.contrato_numero_equipos > 5 ||
     data.contrato_cantidad_reconexion === null ||
     data.contrato_costo_equipo_penalidad === null ||
-    data.contrato_costo_instalacion === null
+    data.contrato_costo_instalacion === null ||
+    !data.contrato_vigencia
   if (contractDataInvalid) {
     return { response: json({ ok: false, error: 'Faltan datos para contrato. Revisa marca del equipo, numero de equipos, alfanumerico y firmas.' }, 400) }
   }
@@ -576,6 +588,15 @@ function normalizeUpper(value) {
   return String(value ?? '').trim().toUpperCase()
 }
 
+function normalizeText(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
 function nullableUpper(value) {
   const normalized = normalizeUpper(value)
   return normalized || null
@@ -607,4 +628,14 @@ function normalizeContractBrand(value, otherValue) {
 function normalizeYesNo(value, fallback = 'SI') {
   const normalized = normalizeUpper(value || fallback)
   return normalized === 'NO' ? 'NO' : 'SI'
+}
+
+function isComunidadVigenciaEspecial(comunidadNombre) {
+  return COMUNIDADES_VIGENCIA_ESPECIAL.includes(normalizeText(comunidadNombre))
+}
+
+function normalizeContratoVigencia(value, comunidadNombre) {
+  if (!isComunidadVigenciaEspecial(comunidadNombre)) return CONTRATO_VIGENCIA_NORMAL
+  const normalized = normalizeText(value)
+  return CONTRATO_VIGENCIAS_ESPECIALES.includes(normalized) ? normalized : null
 }

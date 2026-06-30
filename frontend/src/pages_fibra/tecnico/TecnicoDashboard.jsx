@@ -17,6 +17,7 @@ const initialInstallationForm = {
   contrato_costo_instalacion: '0',
   contrato_aplica_reconexion: 'SI',
   contrato_cantidad_reconexion: '350',
+  contrato_vigencia: '',
   caja_id: '',
   caja_terminal_id: '',
   fibra_optica_metros: '0',
@@ -28,6 +29,10 @@ const initialInstallationForm = {
   potencia: '',
   comentario: '',
 }
+
+const COMUNIDADES_VIGENCIA_ESPECIAL = ['PALAPA', 'COEXCONTLAN', 'ATETETLA']
+const CONTRATO_VIGENCIAS_ESPECIALES = ['MINIMO 6 MESES', 'INSTALACION DE 1500']
+const CONTRATO_VIGENCIA_NORMAL = 'SIN PLAZO FORZOSO'
 
 function TecnicoDashboard({ apiUrl, token, usuario }) {
   const [reportes, setReportes] = useState([])
@@ -251,6 +256,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
         contrato_costo_instalacion: String(instalacion?.contrato_costo_instalacion ?? '0'),
         contrato_aplica_reconexion: instalacion?.contrato_aplica_reconexion ?? 'SI',
         contrato_cantidad_reconexion: String(instalacion?.contrato_cantidad_reconexion ?? '350'),
+        contrato_vigencia: instalacion?.contrato_vigencia ?? '',
         caja_id: instalacion?.caja_id ? String(instalacion.caja_id) : '',
         caja_terminal_id: instalacion?.caja_terminal_id ? String(instalacion.caja_terminal_id) : '',
         fibra_optica_metros: String(instalacion?.fibra_optica_metros ?? '0'),
@@ -369,6 +375,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     () => installationTerminales.find((terminal) => String(terminal.id) === String(installationForm.caja_terminal_id)),
     [installationTerminales, installationForm.caja_terminal_id]
   )
+  const requiresContractVigencia = isComunidadVigenciaEspecial(installationReporte?.comunidad_nombre)
 
   async function handleRouterPhotoChange(event) {
     const file = event.target.files?.[0]
@@ -430,6 +437,11 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
       return
     }
 
+    if (requiresContractVigencia && !CONTRATO_VIGENCIAS_ESPECIALES.includes(installationForm.contrato_vigencia)) {
+      Swal.fire({ icon: 'warning', title: 'Vigencia obligatoria', text: 'Selecciona la vigencia del contrato.', confirmButtonColor: '#4274D9' })
+      return
+    }
+
     if (!installationForm.caja_id) {
       Swal.fire({ icon: 'warning', title: 'Caja obligatoria', text: 'Selecciona una caja de fibra.', confirmButtonColor: '#4274D9' })
       return
@@ -488,6 +500,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
       contrato_costo_instalacion: Number(installationForm.contrato_costo_instalacion || 0),
       contrato_aplica_reconexion: installationForm.contrato_aplica_reconexion,
       contrato_cantidad_reconexion: Number(installationForm.contrato_cantidad_reconexion || 0),
+      contrato_vigencia: requiresContractVigencia ? installationForm.contrato_vigencia : CONTRATO_VIGENCIA_NORMAL,
       caja_id: Number(installationForm.caja_id),
       caja_terminal_id: Number(installationForm.caja_terminal_id),
       fibra_optica_metros: Number(installationForm.fibra_optica_metros || 0),
@@ -754,6 +767,17 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                 </label>
                 <NumberField label="Costo equipo / penalidad" value={installationForm.contrato_costo_equipo_penalidad} onChange={(value) => updateInstallationForm('contrato_costo_equipo_penalidad', value)} step="0.01" />
                 <NumberField label="Costo de instalacion" value={installationForm.contrato_costo_instalacion} onChange={(value) => updateInstallationForm('contrato_costo_instalacion', value)} step="0.01" />
+                {requiresContractVigencia && (
+                  <label>
+                    Vigencia del contrato
+                    <select value={installationForm.contrato_vigencia} onChange={(event) => updateInstallationForm('contrato_vigencia', event.target.value)} required>
+                      <option value="">Selecciona vigencia</option>
+                      {CONTRATO_VIGENCIAS_ESPECIALES.map((vigencia) => (
+                        <option key={vigencia} value={vigencia}>{vigencia}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   Tarifa por reconexion
                   <select value={installationForm.contrato_aplica_reconexion} onChange={(event) => updateInstallationForm('contrato_aplica_reconexion', event.target.value)} required>
@@ -1245,6 +1269,19 @@ function getStatusClass(estado) {
   if (estado === 'PENDIENTE_CONFIRMACION') return 'pending-confirmation'
   if (estado === 'NO_LOCALIZADO') return 'not-found'
   return ''
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+function isComunidadVigenciaEspecial(comunidadNombre) {
+  return COMUNIDADES_VIGENCIA_ESPECIAL.includes(normalizeText(comunidadNombre))
 }
 
 function formatStatus(estado) {

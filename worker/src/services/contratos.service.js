@@ -6,6 +6,9 @@ import { LOGO_BASE64 } from '../utils/logo.js'
 const CONTRATO_ESTADO_GENERADO = 'GENERADO'
 const CONTRATO_COUNTER_KEY = 'contador-contratos'
 const PDF_CONTENT_TYPE = 'application/pdf'
+const COMUNIDADES_VIGENCIA_ESPECIAL = ['PALAPA', 'COEXCONTLAN', 'ATETETLA']
+const CONTRATO_VIGENCIAS_ESPECIALES = ['MINIMO 6 MESES', 'INSTALACION DE 1500']
+const CONTRATO_VIGENCIA_NORMAL = 'SIN PLAZO FORZOSO'
 
 export async function validarContratoInstalacionDisponible(env, instalacionId) {
   validarBindingsContratos(env)
@@ -20,11 +23,7 @@ export async function validarContratoInstalacionDisponible(env, instalacionId) {
 
   if (existing) {
     return {
-      response: json({
-        ok: false,
-        error: 'Esta instalacion ya tiene contrato generado.',
-        contrato: existing,
-      }, 409),
+      contrato: existing,
     }
   }
 
@@ -42,13 +41,13 @@ export async function generarContratoParaInstalacion(env, options) {
        AND estado = 'GENERADO'
      LIMIT 1`
   ).bind(instalacionId).first()
-  if (duplicate) throw new Error('Esta instalacion ya tiene contrato generado.')
+  if (duplicate) return duplicate
 
   const data = await getContratoData(env, instalacionId, clienteId, servicioFibraId)
   if (!data) throw new Error('No se encontraron datos completos para generar el contrato.')
 
   const numeroContrato = await generarNumeroContrato(env)
-  const vigenciaContrato = getVigenciaContrato(data.comunidad_nombre)
+  const vigenciaContrato = getVigenciaContrato(data.comunidad_nombre, data.contrato_vigencia)
   const nombreInstalador = getNombreInstalador(data)
   const clienteSlug = slugPath([data.cliente_nombres, data.cliente_apellido_paterno, data.cliente_apellido_materno].filter(Boolean).join(' '))
   const comunidadFolder = slugPath(data.comunidad_nombre)
@@ -215,6 +214,7 @@ async function getContratoData(env, instalacionId, clienteId, servicioFibraId) {
        instalaciones_fibra.contrato_cantidad_reconexion,
        instalaciones_fibra.contrato_costo_equipo_penalidad,
        instalaciones_fibra.contrato_costo_instalacion,
+       instalaciones_fibra.contrato_vigencia,
        clientes.id AS cliente_id,
        clientes.numero_cliente,
        clientes.nombres AS cliente_nombres,
@@ -414,15 +414,15 @@ async function buildContratoPdf(data) {
 
   // 4. Vigencia Row
   page1.drawText('VIGENCIA DEL CONTRATO:', { x: 36, y: 492, size: 8.5, font: bold, color: black })
-  page1.drawText(safeText(data.vigencia_contrato || 'SIN PLAZO FORZOSO'), { x: 165, y: 492, size: 8.5, font: bold, color: redText })
+  page1.drawText(safeText(data.vigencia_contrato || CONTRATO_VIGENCIA_NORMAL), { x: 165, y: 492, size: 8, font: bold, color: redText })
 
-  page1.drawText('APLICA TARIFA POR RECONEXIÓN:', { x: 316, y: 492, size: 8.5, font: bold, color: black })
-  page1.drawLine({ start: { x: 472, y: 491 }, end: { x: 495, y: 491 }, color: black, thickness: 0.5 })
-  page1.drawText(safeText(data.contrato_aplica_reconexion || 'SI'), { x: 478, y: 493, size: 8.5, font: bold, color: black })
+  page1.drawText('APLICA TARIFA POR RECONEXION:', { x: 36, y: 472, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 202, y: 471 }, end: { x: 240, y: 471 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.contrato_aplica_reconexion || 'SI'), { x: 214, y: 473, size: 8.5, font: bold, color: black })
 
-  page1.drawText('CANTIDAD:', { x: 502, y: 492, size: 8.5, font: bold, color: black })
-  page1.drawLine({ start: { x: 555, y: 491 }, end: { x: 576, y: 491 }, color: black, thickness: 0.5 })
-  page1.drawText(formatCurrency(data.contrato_cantidad_reconexion ?? 350), { x: 557, y: 493, size: 8.5, font: bold, color: black })
+  page1.drawText('CANTIDAD:', { x: 316, y: 472, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 372, y: 471 }, end: { x: 475, y: 471 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.contrato_cantidad_reconexion ?? 350), { x: 382, y: 473, size: 8.5, font: bold, color: black })
 
   // 5. Equipment and Installation Box
   page1.drawRectangle({
@@ -492,17 +492,17 @@ async function buildContratoPdf(data) {
   await drawSignaturePdfLib(pdfDoc, page1, data.firma_tecnico_base64, 382, 300, 160, 50, 'firma tecnico')
 
   // 8. Materials Section
-  drawMaterialRow(page1, 36, 238, 'FIBRA ÓPTICA', data.fibra_optica_metros)
-  drawMaterialRow(page1, 36, 226, 'TENSOR GANCHO', data.tensor_gancho)
-  drawMaterialRow(page1, 36, 214, 'ARGOLLAS', data.argollas)
+  drawMaterialRow(page1, 36, 238, 'FIBRA OPTICA', data.fibra_optica_metros, bold)
+  drawMaterialRow(page1, 36, 226, 'TENSOR GANCHO', data.tensor_gancho, bold)
+  drawMaterialRow(page1, 36, 214, 'ARGOLLAS', data.argollas, bold)
   // Table 2
-  drawMaterialRow(page1, 216, 238, 'TAQUETES', data.taquetes)
-  drawMaterialRow(page1, 216, 226, 'SUJETADORES', data.sujetadores)
-  drawMaterialRow(page1, 216, 214, 'ROSETA', data.roseta)
+  drawMaterialRow(page1, 216, 238, 'TAQUETES', data.taquetes, bold)
+  drawMaterialRow(page1, 216, 226, 'SUJETADORES', data.sujetadores, bold)
+  drawMaterialRow(page1, 216, 214, 'ROSETA', data.roseta, bold)
   // Table 3
-  drawMaterialRow(page1, 396, 238, 'TERMINAL', data.caja_terminal_numero)
-  drawMaterialRow(page1, 396, 226, 'PUERTO', data.codigo_caja || data.caja_nombre)
-  drawMaterialRow(page1, 396, 214, 'POTENCIA', data.potencia !== null && data.potencia !== undefined ? `${data.potencia} dBm` : 'N/A')
+  drawMaterialRow(page1, 396, 238, 'TERMINAL', data.caja_terminal_numero, bold)
+  drawMaterialRow(page1, 396, 226, 'PUERTO', data.codigo_caja || data.caja_nombre, bold)
+  drawMaterialRow(page1, 396, 214, 'POTENCIA', data.potencia !== null && data.potencia !== undefined ? `${data.potencia} dBm` : 'N/A', bold)
 
   // 9. Footer
   page1.drawLine({ start: { x: 36, y: 155 }, end: { x: 576, y: 155 }, color: grayText, thickness: 0.5 })
@@ -647,13 +647,14 @@ async function drawSignaturePdfLib(pdfDoc, page, dataUrl, x, y, width, height, l
   }
 }
 
-function drawMaterialRow(p, x, y, label, val) {
+function drawMaterialRow(p, x, y, label, val, font) {
   const black = rgb(0, 0, 0)
+  const safeFont = assertPdfFont(font, 'drawMaterialRow')
   p.drawRectangle({ x, y, width: 110, height: 12, borderColor: black, borderWidth: 0.5 })
-  p.drawText(safeText(label), { x: x + 4, y: y + 3, size: 6.5, font: p.getFont() ?? StandardFonts.HelveticaBold, color: black })
+  p.drawText(safeText(label), { x: x + 4, y: y + 3, size: 6.5, font: safeFont, color: black })
   
   p.drawRectangle({ x: x + 110, y, width: 50, height: 12, borderColor: black, borderWidth: 0.5 })
-  p.drawText(safeText(String(val ?? 0)), { x: x + 114, y: y + 3, size: 6.5, font: p.getFont() ?? StandardFonts.HelveticaBold, color: black })
+  p.drawText(safeText(String(val ?? 0)), { x: x + 114, y: y + 3, size: 6.5, font: safeFont, color: black })
 }
 
 function getInstalacionDateTime(fechaInstalacion) {
@@ -685,24 +686,39 @@ function formatCicloCorte(nombre) {
 }
 
 function drawTextColumn(page, text, x, y, width, font, size, lineGap = 1.3) {
-  const words = String(text || '').split(/\s+/)
+  const safeFont = assertPdfFont(font, 'drawTextColumn')
+  const safeX = finiteNumber(x, 36)
+  const safeWidth = Math.max(finiteNumber(width, 200), 1)
+  const safeSize = Math.max(finiteNumber(size, 7), 1)
+  const safeLineGap = Math.max(finiteNumber(lineGap, 1.3), 1)
+  const words = safeText(text || '').split(/\s+/).filter(Boolean)
   let line = ''
-  let currentY = y
+  let currentY = finiteNumber(y, 700)
   for (const word of words) {
     const testLine = line ? `${line} ${word}` : word
-    if (font.widthOfTextAtSize(testLine, size) <= width) {
+    if (safeFont.widthOfTextAtSize(testLine, safeSize) <= safeWidth || !line) {
       line = testLine
     } else {
-      page.drawText(line, { x, y: currentY, size, font })
-      currentY -= (size * lineGap)
+      page.drawText(safeText(line), { x: safeX, y: currentY, size: safeSize, font: safeFont })
+      currentY -= (safeSize * safeLineGap)
       line = word
     }
   }
   if (line) {
-    page.drawText(line, { x, y: currentY, size, font })
-    currentY -= (size * lineGap)
+    page.drawText(safeText(line), { x: safeX, y: currentY, size: safeSize, font: safeFont })
+    currentY -= (safeSize * safeLineGap)
   }
   return currentY
+}
+
+function assertPdfFont(font, context) {
+  if (font && typeof font.widthOfTextAtSize === 'function') return font
+  throw new Error(`Fuente PDF invalida en ${context}.`)
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
 }
 
 function parseImageDataUrl(value) {
@@ -749,14 +765,23 @@ function getNombreInstalador(data) {
   return String(data.tecnico_nombre || data.tecnico_numero_empleado || 'TECNICO WIFIMEX').trim() || 'TECNICO WIFIMEX'
 }
 
-function getVigenciaContrato(comunidadNombre) {
-  const comunidad = String(comunidadNombre || '')
+function getVigenciaContrato(comunidadNombre, contratoVigencia) {
+  if (!isComunidadVigenciaEspecial(comunidadNombre)) return CONTRATO_VIGENCIA_NORMAL
+  const vigencia = normalizeText(contratoVigencia)
+  return CONTRATO_VIGENCIAS_ESPECIALES.includes(vigencia) ? vigencia : 'MINIMO 6 MESES'
+}
+
+function normalizeText(value) {
+  return String(value || '')
     .trim()
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-  if (['ATETETLA', 'PALAPA'].includes(comunidad)) return 'MINIMO 6 MESES / INSTALACION $1500'
-  return 'SIN PLAZO FORZOSO'
+    .replace(/\s+/g, ' ')
+}
+
+function isComunidadVigenciaEspecial(comunidadNombre) {
+  return COMUNIDADES_VIGENCIA_ESPECIAL.includes(normalizeText(comunidadNombre))
 }
 
 function packageName(data) {
@@ -786,3 +811,5 @@ function slugPath(value) {
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
 }
+
+

@@ -5,6 +5,8 @@ import { todayDate } from '../utils/dates.js'
 import { generarContratoParaInstalacion, validarContratoInstalacionDisponible } from './contratos.service.js'
 
 const INSTALLATION_CONFIRMED_COMMENT = 'INSTALACION CONFIRMADA. PROSPECTO CONVERTIDO A CLIENTE Y SERVICIO ACTIVO.'
+const COMUNIDADES_VIGENCIA_ESPECIAL = ['PALAPA', 'COEXCONTLAN', 'ATETETLA']
+const CONTRATO_VIGENCIAS_ESPECIALES = ['MINIMO 6 MESES', 'INSTALACION DE 1500']
 
 export async function getRutaReportes(request, env, url) {
   const auth = await requireAuth(request, env, ['ADMIN'])
@@ -197,6 +199,7 @@ export async function listReportes(request, env, url) {
        instalaciones_fibra.contrato_cantidad_reconexion,
        instalaciones_fibra.contrato_costo_equipo_penalidad,
        instalaciones_fibra.contrato_costo_instalacion,
+       instalaciones_fibra.contrato_vigencia,
        instalaciones_fibra.paquete_instalacion_id,
        paquete_instalacion.nombre AS paquete_instalacion_nombre,
        instalaciones_fibra.alfanumerico_equipo,
@@ -484,7 +487,6 @@ export async function confirmarInstalacionReporte(request, env, reporteId) {
   const cicloCorteId = Number(body?.ciclo_corte_id)
   const ipAsignada = nullableText(body?.ip_asignada)
   if (!cicloCorteId) return json({ ok: false, error: 'Selecciona el ciclo de corte.' }, 400)
-  if (!ipAsignada) return json({ ok: false, error: 'Captura la IP asignada.' }, 400)
 
   const reporte = await getReporteById(env, reporteId)
   if (!reporte) return json({ ok: false, error: 'Reporte no encontrado' }, 404)
@@ -814,9 +816,11 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
        instalaciones_fibra.*,
         reportes.prospecto_id AS reporte_prospecto_id,
         reportes.comunidad_id AS reporte_comunidad_id,
+        comunidades.nombre AS comunidad_nombre,
         clientes.numero_cliente AS numero_cliente
       FROM instalaciones_fibra
       JOIN reportes ON reportes.id = instalaciones_fibra.reporte_id
+      JOIN comunidades ON comunidades.id = COALESCE(instalaciones_fibra.comunidad_id, reportes.comunidad_id)
       LEFT JOIN clientes ON clientes.id = instalaciones_fibra.cliente_id
       WHERE instalaciones_fibra.reporte_id = ?
       ORDER BY instalaciones_fibra.id DESC
@@ -860,6 +864,15 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   }
   if (!isSignatureImage(instalacion.firma_tecnico_base64)) {
     return { response: json({ ok: false, error: 'Falta la firma del tecnico.' }, 400) }
+  }
+  if (isComunidadVigenciaEspecial(instalacion.comunidad_nombre)) {
+    const vigencia = normalizeText(instalacion.contrato_vigencia)
+    if (!CONTRATO_VIGENCIAS_ESPECIALES.includes(vigencia)) {
+      return { response: json({ ok: false, error: 'Falta seleccionar la vigencia del contrato.' }, 400) }
+    }
+    instalacion.contrato_vigencia = vigencia
+  } else {
+    instalacion.contrato_vigencia = 'SIN PLAZO FORZOSO'
   }
 
   instalacion.prospecto_id = instalacion.prospecto_id ?? instalacion.reporte_prospecto_id
@@ -1002,6 +1015,15 @@ function normalizeUpper(value) {
   return String(value ?? '').trim().toUpperCase()
 }
 
+function normalizeText(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
 function normalizeOptionalUpper(value) {
   const text = normalizeUpper(value)
   return text || null
@@ -1016,6 +1038,10 @@ function isSignatureImage(value) {
   const raw = String(value ?? '').trim()
   if (/^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(raw)) return true
   return raw.startsWith('iVBOR') || raw.startsWith('/9j/')
+}
+
+function isComunidadVigenciaEspecial(comunidadNombre) {
+  return COMUNIDADES_VIGENCIA_ESPECIAL.includes(normalizeText(comunidadNombre))
 }
 
 export async function getReporteById(env, reporteId) {

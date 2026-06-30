@@ -281,14 +281,10 @@ function ReportesAtencion({ apiUrl, token }) {
         const cicloCorteId = document.getElementById('confirm-install-cycle')?.value
         const ipAsignada = document.getElementById('confirm-install-ip')?.value?.trim()
         if (!cicloCorteId) {
-          Swal.showValidationMessage('Selecciona el ciclo de corte.')
+          Swal.showValidationMessage('Captura el ciclo de pago antes de generar el contrato.')
           return false
         }
-        if (!ipAsignada) {
-          Swal.showValidationMessage('Captura IP y ciclo de pago antes de generar el contrato.')
-          return false
-        }
-        return { ciclo_corte_id: Number(cicloCorteId), ip_asignada: ipAsignada }
+        return { ciclo_corte_id: Number(cicloCorteId), ip_asignada: ipAsignada || null }
       },
     })
 
@@ -704,6 +700,7 @@ function InstallationReview({ reporte, onViewPhoto }) {
         <p><strong>Numero de equipos:</strong> {reporte.contrato_numero_equipos || 'Sin dato'}</p>
         <p><strong>Costo equipo / penalidad:</strong> {formatCurrency(reporte.contrato_costo_equipo_penalidad)}</p>
         <p><strong>Costo de instalacion:</strong> {formatCurrency(reporte.contrato_costo_instalacion)}</p>
+        <p><strong>Vigencia:</strong> {reporte.contrato_vigencia || 'SIN PLAZO FORZOSO'}</p>
         <p><strong>Tarifa por reconexion:</strong> {reporte.contrato_aplica_reconexion || 'Sin dato'}</p>
         <p><strong>Cantidad de reconexion:</strong> {formatCurrency(reporte.contrato_cantidad_reconexion)}</p>
       </section>
@@ -766,7 +763,7 @@ function buildInstallationConfirmationHtml(reporte, ciclosCorte) {
       </label>
       <label>
         IP asignada
-        <input id="confirm-install-ip" class="swal2-input" placeholder="172.20.5.10" required />
+        <input id="confirm-install-ip" class="swal2-input" placeholder="172.20.5.10" />
       </label>
     </div>
   `
@@ -797,7 +794,7 @@ function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
         <h4>Servicio</h4>
         <p><strong>Paquete:</strong> ${escapeHtml(reporte.paquete_instalacion_nombre || reporte.paquete_instalacion_id || 'Sin paquete')}</p>
         <p><strong>Ciclo:</strong> ${escapeHtml(ciclo?.nombre || 'Sin ciclo')}</p>
-        <p><strong>IP asignada:</strong> ${escapeHtml(ipAsignada)}</p>
+        <p><strong>IP asignada:</strong> ${escapeHtml(ipAsignada || 'N/A')}</p>
         <p><strong>Alfanumerico:</strong> ${escapeHtml(reporte.alfanumerico_equipo || 'Sin dato')}</p>
       </section>
       <section>
@@ -806,6 +803,7 @@ function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
         <p><strong>Numero de equipos:</strong> ${escapeHtml(reporte.contrato_numero_equipos || 'Sin dato')}</p>
         <p><strong>Costo equipo / penalidad:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_equipo_penalidad))}</p>
         <p><strong>Costo instalacion:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_instalacion))}</p>
+        <p><strong>Vigencia:</strong> ${escapeHtml(reporte.contrato_vigencia || 'SIN PLAZO FORZOSO')}</p>
         <p><strong>Reconexion:</strong> ${escapeHtml(reporte.contrato_aplica_reconexion || 'Sin dato')} - ${escapeHtml(formatCurrency(reporte.contrato_cantidad_reconexion))}</p>
       </section>
       <section>
@@ -817,8 +815,8 @@ function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
       </section>
       <section>
         <h4>Firmas</h4>
-        <p><strong>Firma cliente:</strong> ${reporte.firma_cliente_base64 ? 'Capturada' : 'Sin firma'}</p>
-        <p><strong>Firma tecnico:</strong> ${reporte.firma_tecnico_base64 ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma cliente:</strong> ${isSignatureImage(reporte.firma_cliente_base64) ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma tecnico:</strong> ${isSignatureImage(reporte.firma_tecnico_base64) ? 'Capturada' : 'Sin firma'}</p>
       </section>
     </div>
   `
