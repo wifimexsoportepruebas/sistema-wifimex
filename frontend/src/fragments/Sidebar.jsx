@@ -40,7 +40,12 @@ const menuItems = [
     view: 'bitacora-tecnicos',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
   },
-
+  {
+    label: 'Comunidades',
+    icon: 'CM',
+    view: 'comunidades',
+    roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
+  },
   {
     label: 'Empleados',
     icon: 'EM',

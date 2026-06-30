@@ -12,6 +12,7 @@ import CajasFibra from '../infraestructura/CajasFibra.jsx'
 import Prospectos from '../prospectos/Prospectos.jsx'
 import CajasCercanas from '../tecnico/CajasCercanas.jsx'
 import BitacoraTecnicos from '../soporte/BitacoraTecnicos.jsx'
+import Comunidades from '../comunidades/Comunidades.jsx'
 
 const roleProfiles = {
   ADMIN: { label: 'Administracion' },
@@ -40,6 +41,7 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
   const canUseInfraestructura = roles.some((role) => ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'].includes(role))
   const canUseCajasCercanas = roles.some((role) => ['TECNICO', 'TECNICO_FIBRA', 'ADMIN'].includes(role))
   const canUseBitacora = roles.some((role) => ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'].includes(role))
+  const canUseComunidades = roles.some((role) => ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'].includes(role))
 
   useEffect(() => {
     function syncViewFromHash() {
@@ -133,6 +135,10 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
         ) : activeView === 'bitacora-tecnicos' ? (
           <div className="dashboard-content">
             {canUseBitacora ? <BitacoraTecnicos apiUrl={apiUrl} token={token} /> : <AccessDenied title="Bitácora de técnicos" />}
+          </div>
+        ) : activeView === 'comunidades' ? (
+          <div className="dashboard-content">
+            {canUseComunidades ? <Comunidades apiUrl={apiUrl} token={token} /> : <AccessDenied title="Comunidades" />}
           </div>
         ) : activeView === 'prospectos' ? (
           <div className="dashboard-content">

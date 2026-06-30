@@ -1,0 +1,135 @@
+.comunidades-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.comunidades-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  background: #ffffff;
+  padding: 20px 24px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(6, 26, 51, 0.05);
+}
+
+.comunidades-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.comunidades-filter-group label {
+  font-size: 0.8rem;
+  font-weight: 750;
+  color: #64748b;
+}
+
+.comunidades-filter-group input,
+.comunidades-filter-group select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(6, 26, 51, 0.12);
+  font: inherit;
+  font-size: 0.9rem;
+  background: #f8fbfe;
+  outline: none;
+}
+
+.comunidades-filter-group input:focus,
+.comunidades-filter-group select:focus {
+  border-color: rgba(66, 116, 217, 0.5);
+  box-shadow: 0 0 0 3px rgba(66, 116, 217, 0.15);
+}
+
+/* Summary Grid */
+.comunidades-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.comunidades-summary-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(6, 26, 51, 0.05);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
+  position: relative;
+  overflow: hidden;
+}
+
+.comunidades-summary-card-value {
+  font-size: 2.2rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1;
+}
+
+.comunidades-summary-card-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* Badges */
+.status-pill {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-pill.activo {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-pill.inactivo {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Form body */
+.comunidades-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 580px) {
+  .comunidades-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.comunidades-warning-box {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #b45309;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comunidades-warning-box strong {
+  font-size: 0.85rem;
+  color: #92400e;
+}
