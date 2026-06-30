@@ -627,7 +627,10 @@ function ReportesAtencion({ apiUrl, token }) {
                 <tr key={reporte.id}>
                   <td><strong>{formatDate(reporte.fecha_reportada)}</strong><span>#{reporte.id}</span></td>
                   <td>{reporte.comunidad_nombre}</td>
-                  <td><span className="soft-pill">{reporte.tipo_reporte}</span></td>
+                  <td>
+                    <span className="soft-pill">{reporte.tipo_reporte}</span>
+                    {reporte.origen === 'DIRECTA_TECNICO' && <span className="soft-pill">INSTALACION IMPREVISTA</span>}
+                  </td>
                   <td><strong>{getSubjectName(reporte)}</strong><span>{getSubjectDetail(reporte)}</span></td>
                   <td>{reporte.comentario}</td>
                   <td><span className={`priority-pill ${String(reporte.prioridad).toLowerCase()}`}>{reporte.prioridad}</span></td>
@@ -655,21 +658,28 @@ function InstallationReview({ reporte, onViewPhoto }) {
     apellido_materno: reporte.titular_apellido_materno,
   })
   const titularDiferente = normalizeCompare(prospectoNombre) !== normalizeCompare(titularNombre)
+  const isDirectInstallation = reporte.origen === 'DIRECTA_TECNICO'
 
   return (
     <div className="installation-review">
-      {titularDiferente && titularNombre !== 'Sin nombre' && (
+      {isDirectInstallation && (
+        <p className="installation-review-warning">Instalacion imprevista registrada por tecnico. No tiene prospecto previo.</p>
+      )}
+
+      {!isDirectInstallation && titularDiferente && titularNombre !== 'Sin nombre' && (
         <p className="installation-review-warning">El titular final capturado en campo es diferente al prospecto original.</p>
       )}
 
-      <section>
-        <h4>Prospecto original</h4>
-        <p><strong>Nombre:</strong> {prospectoNombre}</p>
-        <p><strong>Telefono:</strong> {reporte.prospecto_telefono || 'Sin telefono'}</p>
-        <p><strong>Direccion:</strong> {reporte.prospecto_direccion || 'Sin direccion'}</p>
-        <p><strong>Referencia:</strong> {reporte.prospecto_referencia || 'Sin referencia'}</p>
-        <p><strong>Paquete interes:</strong> {reporte.prospecto_paquete_nombre || reporte.prospecto_paquete_interes_id || 'Sin paquete'}</p>
-      </section>
+      {!isDirectInstallation && (
+        <section>
+          <h4>Prospecto original</h4>
+          <p><strong>Nombre:</strong> {prospectoNombre}</p>
+          <p><strong>Telefono:</strong> {reporte.prospecto_telefono || 'Sin telefono'}</p>
+          <p><strong>Direccion:</strong> {reporte.prospecto_direccion || 'Sin direccion'}</p>
+          <p><strong>Referencia:</strong> {reporte.prospecto_referencia || 'Sin referencia'}</p>
+          <p><strong>Paquete interes:</strong> {reporte.prospecto_paquete_nombre || reporte.prospecto_paquete_interes_id || 'Sin paquete'}</p>
+        </section>
+      )}
 
       <section>
         <h4>Titular final</h4>
@@ -730,6 +740,7 @@ function buildInstallationConfirmationHtml(reporte, ciclosCorte) {
     apellido_paterno: reporte.titular_apellido_paterno,
     apellido_materno: reporte.titular_apellido_materno,
   })
+  const isDirectInstallation = reporte.origen === 'DIRECTA_TECNICO'
   const cicloOptions = ciclosCorte
     .map((ciclo) => `<option value="${escapeHtml(ciclo.id)}">${escapeHtml(ciclo.nombre)}</option>`)
     .join('')
@@ -738,7 +749,8 @@ function buildInstallationConfirmationHtml(reporte, ciclosCorte) {
     <div class="confirm-installation-modal">
       <section>
         <h4>Resumen</h4>
-        <p><strong>Prospecto:</strong> ${escapeHtml(prospectoNombre)}</p>
+        <p><strong>Origen:</strong> ${isDirectInstallation ? 'INSTALACION IMPREVISTA' : 'PROSPECTO'}</p>
+        ${isDirectInstallation ? '<p><strong>Prospecto:</strong> Sin prospecto previo</p>' : `<p><strong>Prospecto:</strong> ${escapeHtml(prospectoNombre)}</p>`}
         <p><strong>Titular final:</strong> ${escapeHtml(titularNombre)}</p>
         <p><strong>Comunidad:</strong> ${escapeHtml(reporte.comunidad_nombre || 'Sin comunidad')}</p>
         <p><strong>Paquete final:</strong> ${escapeHtml(reporte.paquete_instalacion_nombre || reporte.paquete_instalacion_id || 'Sin paquete')}</p>
@@ -780,12 +792,14 @@ function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
     apellido_paterno: reporte.titular_apellido_paterno,
     apellido_materno: reporte.titular_apellido_materno,
   })
+  const isDirectInstallation = reporte.origen === 'DIRECTA_TECNICO'
 
   return `
     <div class="confirm-installation-modal contract-preview-modal">
       <section>
         <h4>Cliente</h4>
-        <p><strong>Prospecto:</strong> ${escapeHtml(prospectoNombre)}</p>
+        <p><strong>Origen:</strong> ${isDirectInstallation ? 'INSTALACION IMPREVISTA' : 'PROSPECTO'}</p>
+        ${isDirectInstallation ? '<p><strong>Prospecto:</strong> Sin prospecto previo</p>' : `<p><strong>Prospecto:</strong> ${escapeHtml(prospectoNombre)}</p>`}
         <p><strong>Titular:</strong> ${escapeHtml(titularNombre)}</p>
         <p><strong>Telefono movil/fijo:</strong> ${escapeHtml(reporte.titular_telefono || reporte.prospecto_telefono || 'Sin telefono')}</p>
         <p><strong>Direccion:</strong> ${escapeHtml(reporte.titular_direccion || reporte.prospecto_direccion || 'Sin direccion')}</p>
@@ -833,11 +847,17 @@ function fullName(item) {
 }
 
 function getSubjectName(reporte) {
+  if (reporte.origen === 'DIRECTA_TECNICO') return reporte.titular_nombres ? fullName({
+    nombres: reporte.titular_nombres,
+    apellido_paterno: reporte.titular_apellido_paterno,
+    apellido_materno: reporte.titular_apellido_materno,
+  }) : 'Instalacion imprevista'
   return reporte.tipo_reporte === 'DETALLE' ? reporte.cliente_nombre || 'Cliente sin nombre' : reporte.prospecto_nombre || 'Prospecto sin nombre'
 }
 
 function getSubjectDetail(reporte) {
   if (reporte.tipo_reporte === 'DETALLE') return [reporte.numero_cliente, reporte.cliente_telefono].filter(Boolean).join(' - ') || 'Sin datos'
+  if (reporte.origen === 'DIRECTA_TECNICO') return [reporte.titular_telefono, 'Sin prospecto previo'].filter(Boolean).join(' - ')
   return reporte.prospecto_telefono || 'Sin telefono'
 }
 

@@ -167,7 +167,8 @@ export async function listReportes(request, env, url) {
   const statement = env.DB.prepare(
     `SELECT
        reportes.id, reportes.fecha_reportada, reportes.cliente_id, reportes.prospecto_id,
-       reportes.tipo_reporte, reportes.comentario, reportes.estado, reportes.prioridad,
+       reportes.tipo_reporte, COALESCE(reportes.origen, 'PROSPECTO') AS origen,
+       reportes.comentario, reportes.estado, reportes.prioridad,
        reportes.fecha_programada, reportes.orden_ruta, reportes.fecha_completado,
        reportes.comentario_cierre, reportes.creado_por_usuario_id,
        comunidades.id AS comunidad_id, comunidades.nombre AS comunidad_nombre,
@@ -491,8 +492,10 @@ export async function confirmarInstalacionReporte(request, env, reporteId) {
   const reporte = await getReporteById(env, reporteId)
   if (!reporte) return json({ ok: false, error: 'Reporte no encontrado' }, 404)
   if (reporte.tipo_reporte !== 'INSTALACION') return json({ ok: false, error: 'Este reporte no es una instalacion.' }, 400)
-  if (!reporte.prospecto_id || reporte.cliente_id) {
-    return json({ ok: false, error: 'El reporte de instalacion debe conservar prospecto y no tener cliente asignado.' }, 400)
+  const origen = normalizeText(reporte.origen || 'PROSPECTO')
+  const isDirectInstallation = origen === 'DIRECTA_TECNICO'
+  if (reporte.cliente_id || (!isDirectInstallation && !reporte.prospecto_id) || (isDirectInstallation && reporte.prospecto_id)) {
+    return json({ ok: false, error: 'El reporte de instalacion no respeta la relacion esperada de cliente/prospecto.' }, 400)
   }
   if (reporte.estado !== 'PENDIENTE_CONFIRMACION') {
     return json({ ok: false, error: 'Solo se puede confirmar una instalacion pendiente de confirmacion.' }, 400)
@@ -814,6 +817,7 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   const instalacion = await env.DB.prepare(
     `SELECT
        instalaciones_fibra.*,
+        COALESCE(reportes.origen, 'PROSPECTO') AS reporte_origen,
         reportes.prospecto_id AS reporte_prospecto_id,
         reportes.comunidad_id AS reporte_comunidad_id,
         comunidades.nombre AS comunidad_nombre,
@@ -875,10 +879,12 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
     instalacion.contrato_vigencia = 'SIN PLAZO FORZOSO'
   }
 
-  instalacion.prospecto_id = instalacion.prospecto_id ?? instalacion.reporte_prospecto_id
+  const origen = normalizeText(instalacion.reporte_origen || 'PROSPECTO')
+  const isDirectInstallation = origen === 'DIRECTA_TECNICO'
+  instalacion.prospecto_id = isDirectInstallation ? null : (instalacion.prospecto_id ?? instalacion.reporte_prospecto_id)
   instalacion.comunidad_id = instalacion.comunidad_id ?? instalacion.reporte_comunidad_id
   if (!instalacion.comunidad_id) return { response: json({ ok: false, error: 'La instalacion no tiene comunidad vinculada.' }, 400) }
-  if (!instalacion.prospecto_id) return { response: json({ ok: false, error: 'La instalacion no tiene prospecto vinculado.' }, 400) }
+  if (!isDirectInstallation && !instalacion.prospecto_id) return { response: json({ ok: false, error: 'La instalacion no tiene prospecto vinculado.' }, 400) }
   if (Number(instalacion.contrato_numero_equipos) < 1 || Number(instalacion.contrato_numero_equipos) > 5) {
     return { response: json({ ok: false, error: 'El numero de equipos para contrato debe estar entre 1 y 5.' }, 400) }
   }
@@ -907,7 +913,7 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
   const prospecto = instalacion.prospecto_id
     ? await env.DB.prepare('SELECT id, referencia FROM prospectos WHERE id = ?').bind(instalacion.prospecto_id).first()
     : null
-  if (!prospecto) return { response: json({ ok: false, error: 'El prospecto de la instalacion no existe.' }, 404) }
+  if (!isDirectInstallation && !prospecto) return { response: json({ ok: false, error: 'El prospecto de la instalacion no existe.' }, 404) }
 
   const terminalValidation = await validateInstalacionTerminalConfirmacion(env, instalacion)
   if (terminalValidation.response) return terminalValidation
@@ -1045,7 +1051,7 @@ function isComunidadVigenciaEspecial(comunidadNombre) {
 }
 
 export async function getReporteById(env, reporteId) {
-  return env.DB.prepare('SELECT id, estado, tecnico_id, tipo_reporte, prospecto_id, cliente_id FROM reportes WHERE id = ?').bind(reporteId).first()
+  return env.DB.prepare("SELECT id, estado, tecnico_id, tipo_reporte, COALESCE(origen, 'PROSPECTO') AS origen, prospecto_id, cliente_id FROM reportes WHERE id = ?").bind(reporteId).first()
 }
 
 export async function insertReporteSeguimiento(env, reporteId, usuarioId, estado, comentario) {

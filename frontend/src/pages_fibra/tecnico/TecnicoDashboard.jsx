@@ -36,6 +36,7 @@ const CONTRATO_VIGENCIA_NORMAL = 'SIN PLAZO FORZOSO'
 
 function TecnicoDashboard({ apiUrl, token, usuario }) {
   const [reportes, setReportes] = useState([])
+  const [comunidades, setComunidades] = useState([])
   const [fecha, setFecha] = useState('')
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState('')
@@ -59,6 +60,16 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
   const [sendingInstallation, setSendingInstallation] = useState(false)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
+
+  const loadComunidades = useCallback(async () => {
+    if (comunidades.length) return comunidades
+    const response = await fetch(`${apiUrl}/api/comunidades`, { headers: authHeaders })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error ?? 'No se pudieron cargar las comunidades.')
+    const nextComunidades = data.comunidades ?? []
+    setComunidades(nextComunidades)
+    return nextComunidades
+  }, [apiUrl, authHeaders, comunidades])
 
   const loadReportes = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -193,6 +204,37 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     loadInstallationData(reporte)
   }
 
+  async function openUnexpectedInstallationModal() {
+    try {
+      await loadComunidades()
+      setInstallationReporte({
+        id: null,
+        imprevista: true,
+        tipo_reporte: 'INSTALACION',
+        origen: 'DIRECTA_TECNICO',
+        estado: 'PENDIENTE_CONFIRMACION',
+        comunidad_id: '',
+        comunidad_nombre: '',
+        prospecto_nombre: '',
+      })
+      setInstallationForm(initialInstallationForm)
+      setInstallationPackages([])
+      setInstallationCajas([])
+      setInstallationTerminales([])
+      setClientSignature('')
+      setTechnicianSignature('')
+      setRouterPhoto('')
+      setRouterPhotoPreview('')
+      setHasStoredRouterPhoto(false)
+      setBoxSelectorOpen(false)
+      setClearClientSignatureSignal((current) => current + 1)
+      setClearTechnicianSignatureSignal((current) => current + 1)
+      requestTechnicianLocation()
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'Error', text: error.message, confirmButtonColor: '#4274D9' })
+    }
+  }
+
   function requestTechnicianLocation() {
     if (locationStatus === 'loading' || locationStatus === 'granted' || locationStatus === 'denied' || locationStatus === 'unsupported') return
 
@@ -282,6 +324,47 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     } finally {
       setLoadingInstallationData(false)
     }
+  }
+
+  async function loadDirectInstallationCatalogs(comunidadId) {
+    if (!comunidadId) {
+      setInstallationPackages([])
+      setInstallationCajas([])
+      setInstallationTerminales([])
+      return
+    }
+
+    setLoadingInstallationData(true)
+    try {
+      const response = await fetch(`${apiUrl}/api/tecnico/comunidades/${comunidadId}/paquetes`, { headers: authHeaders })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error ?? 'No se pudieron cargar los paquetes.')
+      setInstallationPackages(data.paquetes ?? [])
+      await loadCajasDisponibles(comunidadId)
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'Error', text: error.message, confirmButtonColor: '#4274D9' })
+    } finally {
+      setLoadingInstallationData(false)
+    }
+  }
+
+  function updateDirectInstallationCommunity(value) {
+    const comunidad = comunidades.find((item) => String(item.id) === String(value))
+    setInstallationReporte((current) => ({
+      ...current,
+      comunidad_id: value ? Number(value) : '',
+      comunidad_nombre: comunidad?.nombre ?? '',
+    }))
+    setInstallationForm((current) => ({
+      ...current,
+      paquete_instalacion_id: '',
+      caja_id: '',
+      caja_terminal_id: '',
+      contrato_vigencia: '',
+    }))
+    setInstallationTerminales([])
+    setBoxSelectorOpen(false)
+    loadDirectInstallationCatalogs(value)
   }
 
   function closeInstallationModal() {
@@ -401,7 +484,13 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     event.preventDefault()
     if (!installationReporte) return
 
+    const isUnexpectedInstallation = Boolean(installationReporte.imprevista)
     const potencia = Number(installationForm.potencia)
+    if (isUnexpectedInstallation && !installationReporte.comunidad_id) {
+      Swal.fire({ icon: 'warning', title: 'Comunidad obligatoria', text: 'Selecciona la comunidad donde se hizo la instalacion.', confirmButtonColor: '#4274D9' })
+      return
+    }
+
     if (!installationForm.titular_nombres.trim() || !installationForm.titular_telefono.trim() || !installationForm.titular_direccion.trim()) {
       Swal.fire({ icon: 'warning', title: 'Titular incompleto', text: 'Nombre, telefono y direccion del titular son obligatorios.', confirmButtonColor: '#4274D9' })
       return
@@ -486,6 +575,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     }
 
     const payload = {
+      comunidad_id: isUnexpectedInstallation ? Number(installationReporte.comunidad_id) : undefined,
       titular_nombres: installationForm.titular_nombres.trim().toUpperCase(),
       titular_apellido_paterno: installationForm.titular_apellido_paterno.trim().toUpperCase(),
       titular_apellido_materno: installationForm.titular_apellido_materno.trim().toUpperCase(),
@@ -520,11 +610,21 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
 
     setSendingInstallation(true)
     try {
-      await patchAction(installationReporte.id, 'solicitar-cierre', payload)
+      if (isUnexpectedInstallation) {
+        await submitUnexpectedInstallation(payload)
+      } else {
+        await patchAction(installationReporte.id, 'solicitar-cierre', payload)
+      }
       setInstallationReporte(null)
-      await Swal.fire({ icon: 'success', title: 'Solicitud enviada', text: 'La instalacion quedo pendiente de confirmacion.', confirmButtonColor: '#4274D9' })
+      await Swal.fire({
+        icon: 'success',
+        title: 'Solicitud enviada',
+        text: isUnexpectedInstallation
+          ? 'La instalacion imprevista quedo pendiente de revision por Atencion/Soporte.'
+          : 'La instalacion quedo pendiente de confirmacion.',
+        confirmButtonColor: '#4274D9',
+      })
     } catch (error) {
-      const errorText = error.message.toLowerCase()
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -534,6 +634,48 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     } finally {
       setSendingInstallation(false)
     }
+  }
+
+  async function submitUnexpectedInstallation(payload) {
+    const response = await fetch(`${apiUrl}/api/tecnico/instalaciones-imprevistas`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json().catch(() => ({}))
+
+    if (response.status === 409 && data.requires_confirmation) {
+      const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Posibles duplicados',
+        html: `
+          <p>Se detectaron coincidencias antes de enviar a revision:</p>
+          <ul class="duplicate-warning-list">
+            ${(data.warnings ?? []).map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}
+          </ul>
+          <p>Si en campo confirmaste que corresponde, puedes continuar.</p>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Continuar y enviar',
+        cancelButtonText: 'Revisar',
+        confirmButtonColor: '#4274D9',
+      })
+      if (!result.isConfirmed) throw new Error('Revisa los datos antes de enviar.')
+
+      const retry = await fetch(`${apiUrl}/api/tecnico/instalaciones-imprevistas`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, confirmar_posibles_duplicados: true }),
+      })
+      const retryData = await retry.json().catch(() => ({}))
+      if (!retry.ok) throw new Error(retryData.error ?? 'No se pudo enviar la instalacion imprevista.')
+      await loadReportes()
+      return retryData
+    }
+
+    if (!response.ok) throw new Error(data.error ?? 'No se pudo enviar la instalacion imprevista.')
+    await loadReportes()
+    return data
   }
 
   const activeReportes = useMemo(
@@ -641,6 +783,17 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
         </article>
       </section>
 
+      <section className="tecnico-direct-install-card">
+        <div>
+          <span className="fiber-kicker">Instalacion fuera de ruta</span>
+          <h2>Registrar instalacion imprevista</h2>
+          <p>Captura una instalacion realizada en campo para que Atencion/Soporte revise y confirme antes de crear cliente, servicio y contrato.</p>
+        </div>
+        <button type="button" className="tecnico-primary-action" onClick={openUnexpectedInstallationModal}>
+          Registrar instalacion imprevista
+        </button>
+      </section>
+
       {currentReporte && (
         <section className="tecnico-current-report">
           {renderReporteCard(currentReporte, { featured: true })}
@@ -674,7 +827,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
             <header>
               <div>
                 <span className="fiber-kicker">Datos de instalacion</span>
-                <h2>Reporte #{installationReporte.id}</h2>
+                <h2>{installationReporte.imprevista ? 'Instalacion imprevista' : `Reporte #${installationReporte.id}`}</h2>
                 <p>{formatSubject(installationReporte)}</p>
               </div>
               <button type="button" className="installation-close" onClick={closeInstallationModal} aria-label="Cerrar">
@@ -687,6 +840,21 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
             <section className="installation-form-section">
               <h3>Datos finales del titular</h3>
               <div className="installation-form-grid">
+                {installationReporte.imprevista && (
+                  <label className="installation-package-field">
+                    Comunidad
+                    <select
+                      value={installationReporte.comunidad_id || ''}
+                      onChange={(event) => updateDirectInstallationCommunity(event.target.value)}
+                      required
+                    >
+                      <option value="">Selecciona comunidad</option>
+                      {comunidades.map((comunidad) => (
+                        <option key={comunidad.id} value={comunidad.id}>{comunidad.nombre}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   Nombre(s)
                   <input type="text" value={installationForm.titular_nombres} onChange={(event) => updateInstallationForm('titular_nombres', event.target.value)} required />
@@ -979,7 +1147,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                 Cancelar
               </button>
               <button type="submit" className="tecnico-primary-action" disabled={sendingInstallation}>
-                {sendingInstallation ? 'Enviando...' : 'Enviar solicitud de cierre'}
+                {sendingInstallation ? 'Enviando...' : installationReporte.imprevista ? 'Enviar a revision' : 'Enviar solicitud de cierre'}
               </button>
             </footer>
           </form>
@@ -1226,6 +1394,9 @@ function signatureCanvasHasInk(canvas) {
 }
 
 function formatSubject(reporte) {
+  if (reporte.origen === 'DIRECTA_TECNICO' || reporte.imprevista) {
+    return reporte.titular_nombre ? `Instalacion imprevista - ${reporte.titular_nombre}` : 'Instalacion imprevista - sin prospecto previo'
+  }
   if (reporte.tipo_reporte === 'DETALLE') {
     return [reporte.numero_cliente, reporte.cliente_nombre].filter(Boolean).join(' - ') || 'Cliente sin datos'
   }
@@ -1233,12 +1404,14 @@ function formatSubject(reporte) {
 }
 
 function formatPhone(reporte) {
+  if (reporte.origen === 'DIRECTA_TECNICO' || reporte.imprevista) return reporte.titular_telefono || 'Capturar telefono'
   return reporte.tipo_reporte === 'DETALLE'
     ? reporte.cliente_telefono || 'Sin telefono'
     : reporte.prospecto_telefono || 'Sin telefono'
 }
 
 function formatAddress(reporte) {
+  if (reporte.origen === 'DIRECTA_TECNICO' || reporte.imprevista) return reporte.titular_direccion || 'Capturar direccion'
   return reporte.tipo_reporte === 'DETALLE'
     ? reporte.cliente_direccion || 'Sin direccion'
     : reporte.prospecto_direccion || 'Sin direccion'
@@ -1296,6 +1469,15 @@ function formatTime(date) {
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function imageFileToWebpDataUrl(file) {

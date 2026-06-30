@@ -376,10 +376,11 @@ CREATE TABLE "reportes" (
   "fecha_reportada" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "comunidad_id" INTEGER NOT NULL,
   "tipo_reporte" TEXT NOT NULL CHECK ("tipo_reporte" IN ('DETALLE','INSTALACION')),
+  "origen" TEXT NOT NULL DEFAULT 'PROSPECTO' CHECK ("origen" IN ('PROSPECTO','DIRECTA_TECNICO')),
   "cliente_id" INTEGER,
   "prospecto_id" INTEGER,
   "comentario" TEXT NOT NULL,
-  "estado" TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK ("estado" IN ('PENDIENTE','ASIGNADO','EN_PROCESO','COMPLETADO','CANCELADO')),
+  "estado" TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK ("estado" IN ('PENDIENTE','ASIGNADO','EN_PROCESO','PENDIENTE_CONFIRMACION','NO_LOCALIZADO','COMPLETADO','CANCELADO')),
   "prioridad" TEXT NOT NULL DEFAULT 'NORMAL' CHECK ("prioridad" IN ('BAJA','NORMAL','ALTA','URGENTE')),
   "creado_por_usuario_id" INTEGER NOT NULL,
   "tecnico_id" INTEGER,
@@ -395,11 +396,18 @@ CREATE TABLE "reportes" (
   CONSTRAINT "fk_reportes_creador" FOREIGN KEY ("creado_por_usuario_id") REFERENCES "usuarios" ("id"),
   CONSTRAINT "fk_reportes_prospecto" FOREIGN KEY ("prospecto_id") REFERENCES "prospectos" ("id"),
   CONSTRAINT "fk_reportes_tecnico" FOREIGN KEY ("tecnico_id") REFERENCES "usuarios" ("id"),
-  CHECK (("tipo_reporte" = 'DETALLE' AND "cliente_id" IS NOT NULL AND "prospecto_id" IS NULL) OR ("tipo_reporte" = 'INSTALACION' AND "prospecto_id" IS NOT NULL AND "cliente_id" IS NULL))
+  CHECK (
+    ("tipo_reporte" = 'DETALLE' AND "cliente_id" IS NOT NULL AND "prospecto_id" IS NULL)
+    OR
+    ("tipo_reporte" = 'INSTALACION' AND "origen" = 'PROSPECTO' AND "prospecto_id" IS NOT NULL AND "cliente_id" IS NULL)
+    OR
+    ("tipo_reporte" = 'INSTALACION' AND "origen" = 'DIRECTA_TECNICO' AND "prospecto_id" IS NULL AND "cliente_id" IS NULL)
+  )
 );
 CREATE INDEX "idx_reportes_comunidad" ON "reportes" ("comunidad_id");
 CREATE INDEX "idx_reportes_cliente" ON "reportes" ("cliente_id");
 CREATE INDEX "idx_reportes_prospecto" ON "reportes" ("prospecto_id");
+CREATE INDEX "idx_reportes_origen" ON "reportes" ("origen");
 CREATE INDEX "idx_reportes_creador" ON "reportes" ("creado_por_usuario_id");
 CREATE INDEX "idx_reportes_tecnico" ON "reportes" ("tecnico_id");
 CREATE INDEX "idx_reportes_asignador" ON "reportes" ("asignado_por_usuario_id");

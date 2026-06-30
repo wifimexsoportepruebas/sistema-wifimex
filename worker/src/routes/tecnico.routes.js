@@ -2,14 +2,23 @@ import { json } from '../utils/response.js'
 import {
   iniciarReporteTecnico,
   getInstalacionReporteTecnico,
+  listPaquetesInstalacionTecnico,
   listReportesTecnicoHoy,
   noEncontradoReporteTecnico,
+  registrarInstalacionImprevistaTecnico,
   solicitarCierreReporteTecnico,
 } from '../services/tecnico.service.js'
 
 export async function handleTecnicoRoutes(request, env, url) {
   if (request.method === 'GET' && url.pathname === '/api/tecnico/reportes/hoy') {
     return listReportesTecnicoHoy(request, env)
+  }
+
+  const paquetesMatch = url.pathname.match(/^\/api\/tecnico\/comunidades\/(\d+)\/paquetes$/)
+  if (paquetesMatch && request.method === 'GET') return listPaquetesInstalacionTecnico(request, env, Number(paquetesMatch[1]))
+
+  if (request.method === 'POST' && url.pathname === '/api/tecnico/instalaciones-imprevistas') {
+    return registrarInstalacionImprevistaTecnico(request, env)
   }
 
   const instalacionMatch = url.pathname.match(/^\/api\/tecnico\/reportes\/(\d+)\/instalacion$/)

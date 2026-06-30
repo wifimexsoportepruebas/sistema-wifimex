@@ -290,6 +290,43 @@
   margin-top: 20px;
 }
 
+.tecnico-direct-install-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 18px;
+  border: 1px solid rgba(66, 116, 217, 0.16);
+  border-radius: 14px;
+  padding: clamp(16px, 4vw, 22px);
+  background: var(--fiber-white);
+  box-shadow: 0 14px 34px rgba(41, 54, 129, 0.1);
+}
+
+.tecnico-direct-install-card h2,
+.tecnico-direct-install-card p {
+  margin: 0;
+}
+
+.tecnico-direct-install-card h2 {
+  color: var(--fiber-black);
+  font-size: clamp(1.15rem, 3vw, 1.55rem);
+}
+
+.tecnico-direct-install-card p {
+  max-width: 680px;
+  color: var(--fiber-muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.duplicate-warning-list {
+  margin: 10px 0;
+  padding-left: 18px;
+  text-align: left;
+}
+
 .tecnico-section-title {
   display: grid;
   gap: 4px;
@@ -443,6 +480,16 @@
 }
 
 @media (max-width: 760px) {
+  .tecnico-direct-install-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tecnico-direct-install-card .tecnico-primary-action {
+    width: 100%;
+    justify-content: center;
+  }
+
   .installation-modal-backdrop {
     align-items: end;
     padding: 0;

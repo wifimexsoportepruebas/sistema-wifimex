@@ -15,7 +15,8 @@ export async function listReportesTecnicoHoy(request, env) {
   const { results } = await env.DB.prepare(
     `SELECT
        reportes.id, reportes.fecha_reportada, reportes.fecha_programada,
-       reportes.tipo_reporte, reportes.comentario, reportes.estado,
+       reportes.tipo_reporte, COALESCE(reportes.origen, 'PROSPECTO') AS origen,
+       reportes.comentario, reportes.estado,
        reportes.prioridad, reportes.orden_ruta,
        comunidades.id AS comunidad_id,
        comunidades.nombre AS comunidad_nombre,
@@ -25,11 +26,15 @@ export async function listReportesTecnicoHoy(request, env) {
        clientes.direccion AS cliente_direccion,
        trim(prospectos.nombres || ' ' || COALESCE(prospectos.apellido_paterno, '') || ' ' || COALESCE(prospectos.apellido_materno, '')) AS prospecto_nombre,
        prospectos.telefono AS prospecto_telefono,
-       prospectos.direccion AS prospecto_direccion
+       prospectos.direccion AS prospecto_direccion,
+       trim(instalaciones_fibra.titular_nombres || ' ' || COALESCE(instalaciones_fibra.titular_apellido_paterno, '') || ' ' || COALESCE(instalaciones_fibra.titular_apellido_materno, '')) AS titular_nombre,
+       instalaciones_fibra.titular_telefono,
+       instalaciones_fibra.titular_direccion
      FROM reportes
      JOIN comunidades ON comunidades.id = reportes.comunidad_id
      LEFT JOIN clientes ON clientes.id = reportes.cliente_id
      LEFT JOIN prospectos ON prospectos.id = reportes.prospecto_id
+     LEFT JOIN instalaciones_fibra ON instalaciones_fibra.reporte_id = reportes.id
      WHERE reportes.tecnico_id = ?
        AND substr(reportes.fecha_programada, 1, 10) = ?
        AND reportes.estado IN ('ASIGNADO', 'EN_PROCESO', 'PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO')
@@ -119,6 +124,87 @@ export async function getInstalacionReporteTecnico(request, env, reporteId) {
   })
 }
 
+export async function listPaquetesInstalacionTecnico(request, env, comunidadId) {
+  const auth = await requireAuth(request, env, ['TECNICO', 'TECNICO_FIBRA'])
+  if (auth.response) return auth.response
+  if (!Number.isInteger(comunidadId) || comunidadId < 1) return json({ ok: false, error: 'Comunidad obligatoria' }, 400)
+
+  const paquetes = await getPaquetesComunidad(env, comunidadId)
+  return json({ ok: true, paquetes })
+}
+
+export async function registrarInstalacionImprevistaTecnico(request, env) {
+  const auth = await requireAuth(request, env, ['TECNICO', 'TECNICO_FIBRA'])
+  if (auth.response) return auth.response
+
+  const body = await request.json().catch(() => null)
+  const comunidadId = Number(body?.comunidad_id)
+  const solucion = String(body?.solucion ?? body?.comentario ?? '').trim().toUpperCase()
+
+  if (!Number.isInteger(comunidadId) || comunidadId < 1) return json({ ok: false, error: 'Selecciona la comunidad.' }, 400)
+  if (!solucion) return json({ ok: false, error: 'La solucion es obligatoria' }, 400)
+
+  const comunidad = await env.DB.prepare(
+    'SELECT id, nombre FROM comunidades WHERE id = ? AND activo = 1'
+  ).bind(comunidadId).first()
+  if (!comunidad) return json({ ok: false, error: 'Comunidad no encontrada o inactiva.' }, 404)
+
+  const reporteBase = {
+    id: 0,
+    estado: 'EN_PROCESO',
+    tecnico_id: auth.session.usuario_id,
+    tipo_reporte: 'INSTALACION',
+    origen: 'DIRECTA_TECNICO',
+    prospecto_id: null,
+    cliente_id: null,
+    comunidad_id: comunidad.id,
+    comunidad_nombre: comunidad.nombre,
+    paquete_interes_id: null,
+  }
+
+  const validation = await validateInstalacionPayload(env, body, reporteBase)
+  if (validation.response) return validation.response
+
+  const duplicateWarnings = await getInstallationDuplicateWarnings(env, validation.data, comunidad.id)
+  if (duplicateWarnings.length && !body?.confirmar_posibles_duplicados) {
+    return json({
+      ok: false,
+      requires_confirmation: true,
+      error: 'Hay posibles duplicados. Revisa antes de enviar a confirmacion.',
+      warnings: duplicateWarnings,
+    }, 409)
+  }
+
+  const insertResult = await env.DB.prepare(
+    `INSERT INTO reportes (
+       fecha_reportada, comunidad_id, tipo_reporte, cliente_id, prospecto_id,
+       comentario, estado, prioridad, creado_por_usuario_id, tecnico_id,
+       fecha_programada, comentario_cierre, origen
+     ) VALUES (datetime('now'), ?, 'INSTALACION', NULL, NULL, ?, 'PENDIENTE_CONFIRMACION', 'NORMAL', ?, ?, ?, ?, 'DIRECTA_TECNICO')`
+  ).bind(
+    comunidad.id,
+    'INSTALACION IMPREVISTA REGISTRADA POR TECNICO',
+    auth.session.usuario_id,
+    auth.session.usuario_id,
+    todayDate(),
+    solucion
+  ).run()
+
+  const reporteId = insertResult?.meta?.last_row_id
+  if (!reporteId) return json({ ok: false, error: 'No se pudo crear el reporte de instalacion imprevista.' }, 500)
+
+  await saveInstalacionFibra(env, { ...reporteBase, id: reporteId }, auth.session.usuario_id, validation.data, solucion)
+  await insertReporteSeguimiento(env, reporteId, auth.session.usuario_id, 'PENDIENTE_CONFIRMACION', solucion)
+
+  return json({
+    ok: true,
+    reporte_id: reporteId,
+    origen: 'DIRECTA_TECNICO',
+    warnings: duplicateWarnings,
+    message: 'Instalacion imprevista enviada a revision.',
+  }, 201)
+}
+
 export async function solicitarCierreReporteTecnico(request, env, reporteId) {
   const auth = await requireAuth(request, env, ['TECNICO', 'TECNICO_FIBRA'])
   if (auth.response) return auth.response
@@ -153,6 +239,7 @@ async function getReporteTecnico(env, reporteId, usuarioId) {
   return env.DB.prepare(
     `SELECT
        reportes.id, reportes.estado, reportes.tecnico_id, reportes.tipo_reporte,
+       COALESCE(reportes.origen, 'PROSPECTO') AS origen,
        reportes.prospecto_id, reportes.cliente_id, reportes.comunidad_id,
        comunidades.nombre AS comunidad_nombre,
        prospectos.paquete_interes_id,
@@ -573,6 +660,44 @@ async function saveRouterPhoto(env, reporte, dataUrl) {
   })
 
   return { key, contentType }
+}
+
+async function getInstallationDuplicateWarnings(env, data, comunidadId) {
+  const warnings = []
+  const nombre = normalizeText([data.titular_nombres, data.titular_apellido_paterno, data.titular_apellido_materno].filter(Boolean).join(' '))
+
+  if (data.titular_telefono) {
+    const telefono = await env.DB.prepare(
+      `SELECT numero_cliente
+       FROM clientes
+       WHERE telefono = ?
+       LIMIT 1`
+    ).bind(data.titular_telefono).first()
+    if (telefono) warnings.push(`Ya existe un cliente con ese telefono: ${telefono.numero_cliente}.`)
+  }
+
+  if (nombre) {
+    const nombreDuplicado = await env.DB.prepare(
+      `SELECT numero_cliente
+       FROM clientes
+       WHERE comunidad_id = ?
+         AND UPPER(TRIM(nombres || ' ' || COALESCE(apellido_paterno, '') || ' ' || COALESCE(apellido_materno, ''))) = ?
+       LIMIT 1`
+    ).bind(comunidadId, nombre).first()
+    if (nombreDuplicado) warnings.push(`Ya existe un cliente con nombre similar en esta comunidad: ${nombreDuplicado.numero_cliente}.`)
+  }
+
+  if (data.alfanumerico_equipo) {
+    const equipo = await env.DB.prepare(
+      `SELECT id
+       FROM servicios_fibra
+       WHERE alfanumerico_equipo = ?
+       LIMIT 1`
+    ).bind(data.alfanumerico_equipo).first()
+    if (equipo) warnings.push('Ya existe un servicio con ese alfanumerico de equipo.')
+  }
+
+  return warnings
 }
 
 function base64ToBytes(base64) {
