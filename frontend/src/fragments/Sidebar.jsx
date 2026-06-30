@@ -40,7 +40,7 @@ const menuItems = [
     view: 'empleados',
     roles: ['ADMIN'],
   },
-  { label: 'Mis Asignaciones', icon: 'MA', view: 'tecnico', roles: ['TECNICO', 'TECNICO_FIBRA'] },
+  { label: 'Mis Tareas', icon: 'MA', view: 'tecnico', roles: ['TECNICO', 'TECNICO_FIBRA'] },
 ]
 
 function canSeeItem(item, roles) {
