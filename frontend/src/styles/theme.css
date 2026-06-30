@@ -3662,3 +3662,41 @@ body {
     flex: 1;
   }
 }
+
+.advanced-filters-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--fiber-border);
+  width: 100%;
+}
+
+.advanced-filters-panel .advanced-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 240px;
+}
+
+.advanced-filters-panel .advanced-filter-item label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--fiber-muted);
+  white-space: nowrap;
+}
+
+.advanced-filters-panel .advanced-filter-item select,
+.advanced-filters-panel .advanced-filter-item input {
+  flex: 1;
+  min-height: 52px;
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  padding: 0 12px;
+  color: var(--fiber-black);
+  background: var(--fiber-white);
+  font: 800 0.94rem var(--font-main);
+  box-sizing: border-box;
+}
+

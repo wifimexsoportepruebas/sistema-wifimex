@@ -44,15 +44,16 @@ function createCommunityIcon(number, color, totalReportes) {
 function ReportesOperativos({ apiUrl, token, roles = [] }) {
   const [comunidades, setComunidades] = useState([])
   const [tecnicos, setTecnicos] = useState([])
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [rutaData, setRutaData] = useState({
     tecnicos: [],
     sin_tecnico: [],
     sin_coordenadas: [],
-    fecha_programada: 'todas',
+    fecha_programada: todayDate(),
     tecnico_id: 'todos',
   })
   const [filters, setFilters] = useState({
-    fecha_programada: 'todas',
+    fecha_programada: todayDate(),
     tecnico_id: 'todos',
     comunidad_id: '',
     tipo_reporte: '',
@@ -295,44 +296,41 @@ function ReportesOperativos({ apiUrl, token, roles = [] }) {
   }
 
   function dateLabel() {
-    if (filters.fecha_programada === 'todas') return 'Todas'
-    if (filters.fecha_programada === 'sin_fecha') return 'Sin fecha'
+    if (filters.fecha_programada === 'todas') return 'Todas las fechas'
+    if (filters.fecha_programada === 'sin_fecha') return 'Sin fecha (Pendientes)'
     if (filters.fecha_programada === todayDate()) return 'Hoy'
-    if (filters.fecha_programada === tomorrowDate()) return 'Manana'
+    if (filters.fecha_programada === tomorrowDate()) return 'Mañana'
     if (filters.fecha_programada === yesterdayDate()) return 'Ayer'
     return filters.fecha_programada
   }
 
   return (
     <div className="reportes-operativos-page fiber-page" style={{ display: 'grid', gap: '20px' }}>
-      <section className="fiber-page-header">
+      <section className="fiber-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <span className="fiber-kicker">Panel operativo admin</span>
           <h1>Ruta operativa / Reportes programados</h1>
-          <p>Agenda reportes, asigna tecnico y revisa la ruta por fecha operativa.</p>
+          <p>Agenda reportes, asigna técnico y revisa la ruta por fecha operativa.</p>
+        </div>
+        <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '6px 12px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          📅 Viendo: {dateLabel()}
         </div>
       </section>
-
+ 
       <section className="fiber-panel operational-panel">
         <div className="operational-filters">
-          <button className={dateButtonClass('todas')} type="button" onClick={() => updateFilter('fecha_programada', 'todas')}>
-            Todas
-          </button>
-          <button className={dateButtonClass('sin_fecha')} type="button" onClick={() => updateFilter('fecha_programada', 'sin_fecha')}>
-            Sin fecha
-          </button>
           <button className={dateButtonClass(todayDate())} type="button" onClick={() => updateFilter('fecha_programada', todayDate())}>
             Hoy
           </button>
           <button className={dateButtonClass(tomorrowDate())} type="button" onClick={() => updateFilter('fecha_programada', tomorrowDate())}>
-            Manana
+            Mañana
           </button>
-          <button className={dateButtonClass(yesterdayDate())} type="button" onClick={() => updateFilter('fecha_programada', yesterdayDate())}>
-            Ayer
+          <button className={dateButtonClass('sin_fecha')} type="button" onClick={() => updateFilter('fecha_programada', 'sin_fecha')}>
+            Sin fecha
           </button>
           <select value={filters.tecnico_id} onChange={(event) => updateFilter('tecnico_id', event.target.value)}>
-            <option value="todos">Todos los tecnicos</option>
-            <option value="sin_asignar">Sin tecnico asignado</option>
+            <option value="todos">Todos los técnicos</option>
+            <option value="sin_asignar">Sin técnico asignado</option>
             {tecnicos.map((tecnico) => (
               <option value={tecnico.id} key={tecnico.id}>{tecnico.nombre}</option>
             ))}
@@ -343,33 +341,67 @@ function ReportesOperativos({ apiUrl, token, roles = [] }) {
               <option value={comunidad.id} key={comunidad.id}>{comunidad.nombre}</option>
             ))}
           </select>
-          <select value={filters.estado} onChange={(event) => updateFilter('estado', event.target.value)}>
-            <option value="activos">Todos activos</option>
-            <option value="PENDIENTE">Pendientes</option>
-            <option value="ASIGNADO">Asignados</option>
-            <option value="EN_PROCESO">En proceso</option>
-            <option value="PENDIENTE_CONFIRMACION">Pendiente confirmacion</option>
-            <option value="NO_LOCALIZADO">No localizado</option>
-            <option value="todos">Todos los estados</option>
-            {estados.filter((estado) => !['PENDIENTE', 'ASIGNADO', 'EN_PROCESO', 'PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO'].includes(estado)).map((estado) => (
-              <option value={estado} key={estado}>{estado}</option>
-            ))}
-          </select>
-          <select value={filters.tipo_reporte} onChange={(event) => updateFilter('tipo_reporte', event.target.value)}>
-            <option value="">Todos los tipos</option>
-            {tipos.map((tipo) => (
-              <option value={tipo} key={tipo}>{tipo}</option>
-            ))}
-          </select>
+          <button 
+            type="button" 
+            className="fiber-secondary-button" 
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            {showAdvanced ? 'Menos filtros ▴' : 'Más filtros ▾'}
+          </button>
         </div>
 
+        {showAdvanced && (
+          <div className="advanced-filters-panel">
+            <div className="advanced-filter-item" style={{ flex: '0 0 auto', minWidth: 'auto' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--fiber-muted)', marginRight: '8px' }}>Otras fechas:</span>
+              <button className={dateButtonClass('todas')} type="button" onClick={() => updateFilter('fecha_programada', 'todas')}>
+                Todas las fechas
+              </button>
+              <button className={dateButtonClass(yesterdayDate())} type="button" onClick={() => updateFilter('fecha_programada', yesterdayDate())}>
+                Ayer
+              </button>
+            </div>
+            <div className="advanced-filter-item">
+              <label htmlFor="filter-estado">Estado del reporte</label>
+              <select id="filter-estado" value={filters.estado} onChange={(event) => updateFilter('estado', event.target.value)}>
+                <option value="activos">Activos</option>
+                <option value="todos">Todos</option>
+                <option value="PENDIENTE">Pendientes</option>
+                <option value="ASIGNADO">Asignados</option>
+                <option value="EN_PROCESO">En proceso</option>
+                <option value="PENDIENTE_CONFIRMACION">Pendientes confirmación</option>
+                <option value="NO_LOCALIZADO">No localizados</option>
+                {estados.filter((estado) => !['PENDIENTE', 'ASIGNADO', 'EN_PROCESO', 'PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO'].includes(estado)).map((estado) => (
+                  <option value={estado} key={estado}>{estado}</option>
+                ))}
+              </select>
+            </div>
+            <div className="advanced-filter-item">
+              <label htmlFor="filter-tipo">Tipo de reporte</label>
+              <select id="filter-tipo" value={filters.tipo_reporte} onChange={(event) => updateFilter('tipo_reporte', event.target.value)}>
+                <option value="">Todos los tipos</option>
+                {tipos.map((tipo) => (
+                  <option value={tipo} key={tipo}>{tipo}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+ 
         <div className="summary-grid">
-          <Metric label="Fecha operativa" value={dateLabel()} />
-          <Metric label="Reportes" value={metrics.total} />
+          <Metric label={filters.fecha_programada === todayDate() ? "Reportes de hoy" : "Reportes del día"} value={metrics.total} />
           <Metric label="Asignados" value={metrics.asignados} />
-          <Metric label="Sin tecnico" value={metrics.sinTecnico} />
-          <Metric label="Tecnicos en ruta" value={metrics.tecnicos} />
+          <Metric label="Sin técnico" value={metrics.sinTecnico} />
+          <Metric label="Técnicos en ruta" value={metrics.tecnicos} />
+          <Metric label="Pendientes por atender" value={metrics.pendientes} />
         </div>
+
+        {rutaData.sin_tecnico.length === 0 && reportes.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#dcfce7', color: '#15803d', padding: '10px 16px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '16px' }}>
+            <span>✅ Todos los reportes tienen técnico asignado.</span>
+          </div>
+        )}
       </section>
 
       <section className="fiber-panel">
@@ -455,7 +487,23 @@ function ReportesOperativos({ apiUrl, token, roles = [] }) {
               )}
               {!loading && reportes.length === 0 && (
                 <tr>
-                  <td colSpan="10" className="table-empty">No hay reportes para esta fecha o tecnico.</td>
+                  <td colSpan="10" className="table-empty" style={{ padding: '30px', textAlign: 'center' }}>
+                    <div style={{ color: 'var(--fiber-muted)', fontSize: '0.95rem', marginBottom: '10px' }}>
+                      {filters.fecha_programada === todayDate() 
+                        ? 'No hay reportes programados para hoy.' 
+                        : 'No hay reportes para esta fecha o técnico.'}
+                    </div>
+                    {filters.fecha_programada === todayDate() && (
+                      <button 
+                        type="button" 
+                        className="fiber-link-button" 
+                        onClick={() => updateFilter('fecha_programada', 'sin_fecha')}
+                        style={{ fontSize: '0.88rem', textDecoration: 'underline', color: 'var(--fiber-primary)', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Ver reportes sin fecha (pendientes de programar)
+                      </button>
+                    )}
+                  </td>
                 </tr>
               )}
               {!loading && reportes.map((reporte) => (
