@@ -319,17 +319,80 @@
   margin: 0;
 }
 
-@media (max-width: 1100px) {
+/* Responsive Layout Adjustments */
+@media (min-width: 1101px) {
   .infra-cajas-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.7fr);
+    height: 620px;
+    align-items: stretch;
   }
-
-  .infra-map {
-    min-height: 400px;
+  .infra-map-panel,
+  .infra-detail-panel {
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .infra-detail-panel {
+    overflow-y: auto;
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1100px) and (min-width: 769px) {
+  .infra-cajas-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+    height: 520px;
+    align-items: stretch;
+  }
+  .infra-map-panel,
+  .infra-detail-panel {
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .infra-detail-panel {
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .infra-cajas-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .infra-map-panel {
+    height: 420px;
+    box-sizing: border-box;
+    padding: 12px;
+  }
+  
+  .infra-map {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  /* Bottom sheet modal styling for detail panel on mobile */
+  .infra-detail-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 2000;
+    background: #ffffff;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.15);
+    max-height: 75vh;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+    animation: slideUp 0.3s ease-out;
+    border: 1px solid rgba(6, 26, 51, 0.1);
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
   .infra-header-actions,
   .infra-detail-actions {
     width: 100%;
@@ -353,3 +416,238 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Custom Leaflet Map Markers */
+.custom-infra-marker {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  position: relative;
+}
+
+.custom-infra-marker .marker-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 50% 50% 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-45deg);
+  position: absolute;
+  top: -28px;
+  left: -14px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+}
+
+.custom-infra-marker .marker-pin span {
+  transform: rotate(45deg);
+  font-family: var(--font-main);
+  font-weight: 900;
+  font-size: 0.72rem;
+  color: #ffffff;
+  display: block;
+}
+
+/* Colors for specific box types */
+.custom-infra-marker.type-a .marker-pin {
+  background: #dc2626; /* red */
+}
+.custom-infra-marker.type-b .marker-pin {
+  background: #2563eb; /* blue */
+}
+.custom-infra-marker.type-c .marker-pin {
+  background: #16a34a; /* green */
+}
+.custom-infra-marker.type-olt .marker-pin {
+  background: #ea580c; /* orange/yellow */
+  border-radius: 8px; /* OLT marker is square/diamond rotated */
+}
+.custom-infra-marker.type-sin_tipo .marker-pin {
+  background: #64748b; /* grey */
+}
+
+/* Availability colors (Borders) */
+.custom-infra-marker.avail-green .marker-pin {
+  border: 3px solid #4ade80; /* green border */
+}
+.custom-infra-marker.avail-yellow .marker-pin {
+  border: 3px solid #facc15; /* yellow border */
+}
+.custom-infra-marker.avail-red .marker-pin {
+  border: 3px solid #f87171; /* red border */
+}
+.custom-infra-marker.avail-olt .marker-pin {
+  border: 3px solid #fef08a; /* yellow border for OLT */
+}
+
+/* Labels on Map */
+.custom-infra-marker .marker-label {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-main);
+  font-weight: 800;
+  font-size: 0.68rem;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+}
+
+/* Map legend UI styling */
+.map-legend-box {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid rgba(6, 26, 51, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  font-family: var(--font-main);
+  overflow: hidden;
+  max-width: 260px;
+  transition: all 0.3s ease;
+}
+
+.map-legend-box.open {
+  width: 240px;
+}
+
+.legend-toggle-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: none;
+  border-bottom: 1px solid rgba(6, 26, 51, 0.08);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #1e293b;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.legend-content {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.legend-content h4 {
+  margin: 4px 0 2px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  color: #334155;
+}
+
+.legend-item .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-item .dot.type-a { background: #dc2626; }
+.legend-item .dot.type-b { background: #2563eb; }
+.legend-item .dot.type-c { background: #16a34a; }
+.legend-item .dot.type-olt { background: #ea580c; border-radius: 2px; }
+.legend-item .dot.type-sintipo { background: #64748b; }
+
+.legend-item .border-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  display: inline-block;
+}
+
+.legend-item .border-indicator.avail-green { border-color: #4ade80; background: #64748b; }
+.legend-item .border-indicator.avail-yellow { border-color: #facc15; background: #64748b; }
+.legend-item .border-indicator.avail-red { border-color: #f87171; background: #64748b; }
+
+/* Satellite & Map Layer Selector UI styling */
+.map-layer-selector {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 26, 51, 0.12);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  padding: 3px;
+  gap: 2px;
+}
+
+.map-layer-selector button {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  font-family: var(--font-main);
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.map-layer-selector button.active {
+  background: var(--fiber-primary);
+  color: #ffffff;
+}
+
+/* Screen height adaptations */
+.infra-map-panel {
+  position: relative;
+}
+
+@media (min-width: 1100px) {
+  .infra-map {
+    height: 620px;
+  }
+}
+
+@media (max-width: 1100px) and (min-width: 760px) {
+  .infra-map {
+    height: 520px;
+  }
+}
+
+@media (max-width: 760px) {
+  .infra-map {
+    height: 420px; /* 60vh equivalent or fixed 420px */
+  }
+  
+  .map-legend-box {
+    bottom: 10px;
+    left: 10px;
+    max-width: calc(100% - 20px);
+  }
+}
+

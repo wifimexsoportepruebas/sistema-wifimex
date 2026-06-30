@@ -1,13 +1,130 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import Swal from 'sweetalert2'
 import 'leaflet/dist/leaflet.css'
 import '../../styles/CajasFibra.css'
 
 const DEFAULT_CENTER = [18.349, -99.535]
-const CAJA_ICON = L.divIcon({ className: 'fiber-map-marker caja', html: '<span></span>', iconSize: [22, 22], iconAnchor: [11, 11] })
-const OLT_ICON = L.divIcon({ className: 'fiber-map-marker olt', html: '<span></span>', iconSize: [28, 28], iconAnchor: [14, 14] })
+
+// Helpers for KMZ-style marker styling
+function inferCajaTipoYOrden(caja) {
+  if (!caja) return { tipo: 'SIN_TIPO', orden: 9999 }
+  
+  const nomStr = `${caja.nombre_original_kml || ''} ${caja.nombre || ''} ${caja.codigo_caja || ''}`.toUpperCase().trim()
+  
+  if (nomStr.includes('OLT')) {
+    return { tipo: 'OLT', orden: 0 }
+  }
+  
+  // Try pattern: "PON 12B" or "PON 02A" or "12B" or "02A" or "2A"
+  const matchNumLetter = nomStr.match(/\b(?:PON\s*)?0*([0-9]+)\s*([A-D])\b/)
+  if (matchNumLetter) {
+    return { tipo: matchNumLetter[2], orden: Number(matchNumLetter[1]) }
+  }
+  
+  // Try pattern: "A1" or "A-1" or "CAJA A1"
+  const matchLetterNum = nomStr.match(/\b(?:CAJA\s*)?([A-D])\s*[-_]?\s*0*([0-9]+)\b/)
+  if (matchLetterNum) {
+    return { tipo: matchLetterNum[1], orden: Number(matchLetterNum[2]) }
+  }
+
+  // Split search
+  const parts = nomStr.split(/[\s_-]+/)
+  for (const part of parts) {
+    const m1 = part.match(/^0*([0-9]+)([A-D])$/)
+    if (m1) return { tipo: m1[2], orden: Number(m1[1]) }
+    
+    const m2 = part.match(/^([A-D])\s*[-_]?\s*0*([0-9]+)$/)
+    if (m2) return { tipo: m2[1], orden: Number(m2[2]) }
+  }
+  
+  if (/\bA\b/.test(nomStr) || nomStr.endsWith('A')) return { tipo: 'A', orden: 9999 }
+  if (/\bB\b/.test(nomStr) || nomStr.endsWith('B')) return { tipo: 'B', orden: 9999 }
+  if (/\bC\b/.test(nomStr) || nomStr.endsWith('C')) return { tipo: 'C', orden: 9999 }
+  if (/\bD\b/.test(nomStr) || nomStr.endsWith('D')) return { tipo: 'D', orden: 9999 }
+  
+  return { tipo: 'SIN_TIPO', orden: 9999 }
+}
+
+function inferCajaTipo(caja) {
+  return inferCajaTipoYOrden(caja).tipo
+}
+
+function createCustomCajaIcon(caja, zoomLevel) {
+  const tipo = caja.tipo === 'OLT' ? 'OLT' : inferCajaTipo(caja)
+  
+  const libres = caja.terminales_libres ?? 0
+  const reservadas = caja.terminales_reservadas ?? 0
+  
+  let availClass = 'avail-green'
+  if (libres === 0) {
+    availClass = reservadas > 0 ? 'avail-yellow' : 'avail-red'
+  } else if (libres <= 2) {
+    availClass = 'avail-yellow'
+  }
+  
+  if (tipo === 'OLT') {
+    availClass = 'avail-olt'
+  }
+  
+  let iconText = '?'
+  if (tipo === 'OLT') iconText = 'OLT'
+  else if (tipo === 'A') iconText = 'A'
+  else if (tipo === 'B') iconText = 'B'
+  else if (tipo === 'C') iconText = 'C'
+  else if (tipo === 'D') iconText = 'D'
+  
+  const labelText = caja.codigo_caja || caja.nombre || ''
+  
+  const isMobile = window.innerWidth <= 760
+  const labelThreshold = isMobile ? 15 : 13
+  const showLabel = zoomLevel >= labelThreshold
+  
+  return L.divIcon({
+    className: `custom-infra-marker type-${tipo.toLowerCase()} ${availClass}`,
+    html: `
+      <div class="marker-pin">
+        <span>${iconText}</span>
+      </div>
+      ${showLabel ? `<div class="marker-label" style="${isMobile ? 'font-size: 0.58rem; padding: 1px 4px;' : ''}">${escapeHtml(labelText)}</div>` : ''}
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -28]
+  })
+}
+
+function getLineColor(tipo) {
+  const normalized = String(tipo ?? '').toUpperCase().trim()
+  if (normalized === 'A') return '#ef4444'
+  if (normalized === 'B') return '#2563eb'
+  if (normalized === 'C') return '#22c55e'
+  if (normalized === 'D') return '#8b5cf6'
+  if (normalized === 'OLT') return '#f59e0b'
+  return '#64748b'
+}
+
+
+function MapEventsHandler({ onZoomChange }) {
+  const map = useMapEvents({
+    zoomend() {
+      onZoomChange(map.getZoom())
+    }
+  })
+  return null
+}
+
+function MapResizeHandler({ trigger }) {
+  const map = useMap()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [trigger, map])
+  return null
+}
 
 function CajasFibra({ apiUrl, token }) {
   const [cajas, setCajas] = useState([])
@@ -16,8 +133,110 @@ function CajasFibra({ apiUrl, token }) {
   const [selectedCaja, setSelectedCaja] = useState(null)
   const [filters, setFilters] = useState({ comunidad_id: '', estado: 'activo', q: '' })
   const [loading, setLoading] = useState(true)
+  
+  // Custom Map UI State
+  const [currentZoom, setCurrentZoom] = useState(14)
+  const [mapLayer, setMapLayer] = useState('osm')
+  const [showLegend, setShowLegend] = useState(false)
+  const [showLines, setShowLines] = useState(true)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
+
+  const visualLines = useMemo(() => {
+    if (!showLines) return []
+    const lines = []
+    
+    // Group boxes by community
+    const communitiesGroups = {}
+    cajas.forEach(caja => {
+      if (Number.isFinite(Number(caja.latitud)) && Number.isFinite(Number(caja.longitud))) {
+        if (!communitiesGroups[caja.comunidad_id]) {
+          communitiesGroups[caja.comunidad_id] = []
+        }
+        communitiesGroups[caja.comunidad_id].push(caja)
+      }
+    })
+    
+    Object.keys(communitiesGroups).forEach(comId => {
+      const group = communitiesGroups[comId]
+      
+      // Find OLTs in this community
+      const olts = group.filter(c => c.tipo === 'OLT' || inferCajaTipoYOrden(c).tipo === 'OLT')
+      
+      // Group client boxes by branch (A, B, C, D)
+      const branches = { A: [], B: [], C: [], D: [] }
+      
+      group.forEach(caja => {
+        if (caja.tipo === 'OLT') return
+        const info = inferCajaTipoYOrden(caja)
+        if (info.tipo !== 'OLT' && info.tipo !== 'SIN_TIPO' && info.orden !== 9999) {
+          branches[info.tipo].push({
+            caja,
+            orden: info.orden
+          })
+        }
+      })
+      
+      // Process each branch
+      const branchKeys = ['A', 'B', 'C', 'D']
+      branchKeys.forEach(branchName => {
+        const branchBoxes = branches[branchName]
+        if (branchBoxes.length === 0) return
+        
+        // Sort branch boxes by sequence number ascending
+        branchBoxes.sort((a, b) => a.orden - b.orden)
+        
+        const firstBox = branchBoxes[0].caja
+        
+        // Connect OLT to the first box of the branch (picking the geographically closest OLT if multiple)
+        if (olts.length > 0) {
+          let olt = olts[0]
+          if (olts.length > 1) {
+            // Find OLT with minimum distance to the first client box
+            let minDistance = Infinity
+            const targetLat = Number(firstBox.latitud)
+            const targetLng = Number(firstBox.longitud)
+            olts.forEach(o => {
+              const oltLat = Number(o.latitud)
+              const oltLng = Number(o.longitud)
+              if (Number.isFinite(oltLat) && Number.isFinite(oltLng)) {
+                const dist = Math.sqrt(Math.pow(oltLat - targetLat, 2) + Math.pow(oltLng - targetLng, 2))
+                if (dist < minDistance) {
+                  minDistance = dist
+                  olt = o
+                }
+              }
+            })
+          }
+          
+          lines.push({
+            id: `line-${olt.id}-${firstBox.id}`,
+            positions: [
+              [Number(olt.latitud), Number(olt.longitud)],
+              [Number(firstBox.latitud), Number(firstBox.longitud)]
+            ],
+            tipo: branchName
+          })
+        }
+        
+        // Connect each box to the next within the same branch
+        for (let i = 0; i < branchBoxes.length - 1; i++) {
+          const currentBox = branchBoxes[i].caja
+          const nextBox = branchBoxes[i+1].caja
+          lines.push({
+            id: `line-${currentBox.id}-${nextBox.id}`,
+            positions: [
+              [Number(currentBox.latitud), Number(currentBox.longitud)],
+              [Number(nextBox.latitud), Number(nextBox.longitud)]
+            ],
+            tipo: branchName
+          })
+        }
+      })
+    })
+    
+    return lines
+  }, [cajas, showLines])
 
   const loadComunidades = useCallback(async () => {
     try {
@@ -419,24 +638,146 @@ function CajasFibra({ apiUrl, token }) {
         <div className="fiber-panel infra-map-panel">
           <MapContainer center={mapCenter} zoom={14} scrollWheelZoom className="infra-map">
             <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution={mapLayer === 'satelite' ? '&copy; ESRI World Imagery' : '&copy; OpenStreetMap'}
+              url={mapLayer === 'satelite' 
+                ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' 
+                : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
             />
             <MapRecenter center={mapCenter} />
+            <MapEventsHandler onZoomChange={setCurrentZoom} />
+            <MapResizeHandler trigger={selectedCaja ? selectedCaja.id : 'none'} />
+            
+            {/* Visual Fiber Lines */}
+            {visualLines.map(line => {
+              const color = getLineColor(line.tipo)
+              return (
+                <Polyline 
+                  key={line.id} 
+                  positions={line.positions} 
+                  color={color} 
+                  weight={2.5} 
+                  opacity={0.45} 
+                  lineCap="round" 
+                  lineJoin="round" 
+                />
+              )
+            })}
+
             {cajas.map((caja) => (
               <Marker
                 key={caja.id}
                 position={[Number(caja.latitud), Number(caja.longitud)]}
-                icon={caja.tipo === 'OLT' ? OLT_ICON : CAJA_ICON}
+                icon={createCustomCajaIcon(caja, currentZoom)}
                 eventHandlers={{ click: () => openDetail(caja) }}
               >
-                <Popup>
-                  <strong>{caja.nombre || caja.codigo_caja || 'Punto'}</strong>
-                  <span>{caja.comunidad_nombre}</span>
+                <Popup className="custom-infra-popup">
+                  <div style={{ fontFamily: 'var(--font-main)', padding: '6px' }}>
+                    <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: 'var(--fiber-black)' }}>
+                      {caja.nombre || caja.codigo_caja || 'Caja sin nombre'}
+                    </h3>
+                    {caja.nombre_original_kml && (
+                      <p style={{ margin: '0 0 4px', fontSize: '0.78rem', color: 'var(--fiber-muted)' }}>
+                        <strong>KML:</strong> {caja.nombre_original_kml}
+                      </p>
+                    )}
+                    <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--fiber-text)' }}>
+                      <strong>Comunidad:</strong> {caja.comunidad_nombre}
+                    </p>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--fiber-text)' }}>
+                      <strong>Tipo:</strong> {caja.tipo === 'OLT' ? 'OLT' : `Caja Tipo ${inferCajaTipo(caja)}`}
+                    </p>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--fiber-text)' }}>
+                      <strong>Estado:</strong> {Number(caja.activo) ? 'ACTIVA' : 'INACTIVA'}
+                    </p>
+                    {caja.tipo === 'CAJA' && (
+                      <div style={{ marginTop: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#16a34a' }}>
+                          🟢 <strong>Libres:</strong> {caja.terminales_libres ?? 0}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#2563eb' }}>
+                          🔵 <strong>Ocupadas:</strong> {caja.terminales_ocupadas ?? 0}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#64748b' }}>
+                          ⚪ <strong>Total:</strong> {caja.terminales_total ?? 0}
+                        </span>
+                      </div>
+                    )}
+                    <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                      <button 
+                        type="button" 
+                        className="fiber-primary-button" 
+                        onClick={() => openDetail(caja)}
+                        style={{ fontSize: '0.75rem', padding: '6px 12px', minHeight: 'auto', borderRadius: '6px' }}
+                      >
+                        Ver terminales
+                      </button>
+                      <button 
+                        type="button" 
+                        className="fiber-secondary-button" 
+                        onClick={() => openCajaForm(caja)}
+                        style={{ fontSize: '0.75rem', padding: '6px 12px', minHeight: 'auto', borderRadius: '6px' }}
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  </div>
                 </Popup>
               </Marker>
             ))}
           </MapContainer>
+
+          <div className="map-layer-selector">
+            <button 
+              type="button" 
+              className={mapLayer === 'osm' ? 'active' : ''} 
+              onClick={() => setMapLayer('osm')}
+            >
+              Mapa
+            </button>
+            <button 
+              type="button" 
+              className={mapLayer === 'satelite' ? 'active' : ''} 
+              onClick={() => setMapLayer('satelite')}
+            >
+              Satélite
+            </button>
+            <button 
+              type="button" 
+              className={showLines ? 'active' : ''} 
+              style={{ borderLeft: '1px solid rgba(6, 26, 51, 0.12)' }}
+              onClick={() => setShowLines(!showLines)}
+            >
+              {showLines ? 'Ocultar Líneas' : 'Ver Líneas'}
+            </button>
+          </div>
+
+          <div className={`map-legend-box ${showLegend ? 'open' : ''}`}>
+            <button type="button" className="legend-toggle-btn" onClick={() => setShowLegend(!showLegend)}>
+              {showLegend ? 'Ocultar Leyenda ▴' : 'Mostrar Leyenda ▾'}
+            </button>
+            {showLegend && (
+              <div className="legend-content">
+                <h4>Tipos de Cajas</h4>
+                <div className="legend-item"><span className="dot type-a"></span> Caja Tipo A (Rojo)</div>
+                <div className="legend-item"><span className="dot type-b"></span> Caja Tipo B (Azul)</div>
+                <div className="legend-item"><span className="dot type-c"></span> Caja Tipo C (Verde)</div>
+                <div className="legend-item"><span className="dot type-d"></span> Caja Tipo D (Morado)</div>
+                <div className="legend-item"><span className="dot type-olt"></span> Central / OLT (Naranja)</div>
+                <div className="legend-item"><span className="dot type-sintipo"></span> Sin Tipo (Gris)</div>
+                
+                <h4>Disponibilidad (Bordes)</h4>
+                <div className="legend-item"><span className="border-indicator avail-green"></span> Con libres ({'>'}2)</div>
+                <div className="legend-item"><span className="border-indicator avail-yellow"></span> Pocas libres (1-2)</div>
+                <div className="legend-item"><span className="border-indicator avail-red"></span> Sin libres (0)</div>
+
+                <h4>Líneas de fibra</h4>
+                <div className="legend-item">
+                  <span style={{ width: '16px', height: '3px', background: '#3b82f6', display: 'inline-block', borderRadius: '2px' }}></span>
+                  <span>Enlace operativo</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <aside className="fiber-panel infra-detail-panel">
@@ -448,13 +789,39 @@ function CajasFibra({ apiUrl, token }) {
                   <h2>{selectedCaja.nombre || selectedCaja.codigo_caja}</h2>
                   <p>{selectedCaja.comunidad_nombre}</p>
                 </div>
-                <span className={`status-pill ${Number(selectedCaja.activo) ? '' : 'inactive'}`}>
-                  {Number(selectedCaja.activo) ? 'ACTIVA' : 'INACTIVA'}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                  <span className={`status-pill ${Number(selectedCaja.activo) ? '' : 'inactive'}`}>
+                    {Number(selectedCaja.activo) ? 'ACTIVA' : 'INACTIVA'}
+                  </span>
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedCaja(null)}
+                    style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--fiber-muted)', fontWeight: 'bold' }}
+                    title="Cerrar panel"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
               <dl className="infra-detail-list">
                 <div><dt>Codigo</dt><dd>{selectedCaja.codigo_caja || 'N/A'}</dd></div>
+                {selectedCaja.nombre_original_kml && (
+                  <div><dt>Nombre Original KML</dt><dd>{selectedCaja.nombre_original_kml}</dd></div>
+                )}
+                <div><dt>Comunidad</dt><dd>{selectedCaja.comunidad_nombre}</dd></div>
                 <div><dt>Coordenadas</dt><dd>{selectedCaja.latitud}, {selectedCaja.longitud}</dd></div>
+                <div><dt>Estado</dt><dd>{Number(selectedCaja.activo) ? 'ACTIVA' : 'INACTIVA'}</dd></div>
+                {selectedCaja.tipo === 'CAJA' && (
+                  <>
+                    <div><dt>Total Terminales</dt><dd>{terminales.length}</dd></div>
+                    <div><dt>Libres</dt><dd style={{ color: '#16a34a' }}>{terminales.filter(t => normalizeTerminalEstado(t.estado) === 'LIBRE').length}</dd></div>
+                    <div><dt>Ocupadas</dt><dd style={{ color: '#2563eb' }}>{terminales.filter(t => normalizeTerminalEstado(t.estado) === 'OCUPADO').length}</dd></div>
+                    <div><dt>Reservadas</dt><dd style={{ color: '#0284c7' }}>{terminales.filter(t => normalizeTerminalEstado(t.estado) === 'RESERVADO').length}</dd></div>
+                    {terminales.some(t => normalizeTerminalEstado(t.estado) === 'DAÑADO') && (
+                      <div><dt>Dañadas</dt><dd style={{ color: '#dc2626' }}>{terminales.filter(t => normalizeTerminalEstado(t.estado) === 'DAÑADO').length}</dd></div>
+                    )}
+                  </>
+                )}
               </dl>
               <div className="infra-detail-actions">
                 <button type="button" className="fiber-secondary-button" onClick={() => openCajaForm(selectedCaja)}>Editar</button>
