@@ -27,6 +27,12 @@ const menuItems = [
     roles: ['ADMIN'],
   },
   {
+    label: 'Bitácora de técnicos',
+    icon: 'BT',
+    view: 'bitacora-tecnicos',
+    roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
+  },
+  {
     label: 'Infraestructura',
     icon: 'IF',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],

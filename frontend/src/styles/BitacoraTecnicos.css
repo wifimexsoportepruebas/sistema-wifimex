@@ -1,0 +1,301 @@
+.bitacora-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.bitacora-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  background: #ffffff;
+  padding: 20px 24px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(6, 26, 51, 0.05);
+}
+
+.bitacora-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.bitacora-filter-group label {
+  font-size: 0.8rem;
+  font-weight: 750;
+  color: #64748b;
+}
+
+.bitacora-filter-group input,
+.bitacora-filter-group select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(6, 26, 51, 0.12);
+  font: inherit;
+  font-size: 0.9rem;
+  background: #f8fbfe;
+  outline: none;
+}
+
+.bitacora-filter-group input:focus,
+.bitacora-filter-group select:focus {
+  border-color: rgba(66, 116, 217, 0.5);
+  box-shadow: 0 0 0 3px rgba(66, 116, 217, 0.15);
+}
+
+/* Summary Grid */
+.bitacora-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.bitacora-summary-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(6, 26, 51, 0.05);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
+  position: relative;
+  overflow: hidden;
+}
+
+.bitacora-summary-card-value {
+  font-size: 2.2rem;
+  font-weight: 850;
+  color: #0f172a;
+  line-height: 1;
+}
+
+.bitacora-summary-card-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* Sections for each Technician */
+.bitacora-tech-section {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid rgba(6, 26, 51, 0.05);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.03);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bitacora-tech-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid rgba(6, 26, 51, 0.06);
+  padding-bottom: 14px;
+}
+
+.bitacora-tech-title {
+  font-size: 1.25rem;
+  font-weight: 850;
+  color: #0f172a;
+}
+
+.bitacora-tech-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+
+.bitacora-tech-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 750;
+}
+
+.bitacora-tech-badge.total { background: #f1f5f9; color: #475569; }
+.bitacora-tech-badge.completada { background: #dcfce7; color: #15803d; }
+.bitacora-tech-badge.confirmacion { background: #dbeafe; color: #1d4ed8; }
+.bitacora-tech-badge.proceso { background: #fef3c7; color: #b45309; }
+.bitacora-tech-badge.reagendada { background: #ffedd5; color: #c2410c; }
+
+/* Timeline vertical layout */
+.bitacora-timeline {
+  position: relative;
+  border-left: 2px solid rgba(6, 26, 51, 0.08);
+  margin-left: 20px;
+  padding-left: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.bitacora-event-node {
+  position: relative;
+}
+
+.bitacora-event-node::before {
+  content: '';
+  position: absolute;
+  left: -37px;
+  top: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+/* Event Dot Colors */
+.event-node-completado::before { background: #10b981; }
+.event-node-pendiente_confirmacion::before { background: #3b82f6; }
+.event-node-en_proceso::before { background: #f59e0b; }
+.event-node-asignado::before, .event-node-pendiente::before { background: #94a3b8; }
+.event-node-cancelado::before { background: #ef4444; }
+.event-node-no_localizado::before { background: #ec4899; }
+.event-node-reagendado::before { background: #f97316; }
+
+.bitacora-event-card {
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 1px solid rgba(6, 26, 51, 0.04);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.bitacora-event-card:hover {
+  background: #f1f5f9;
+  border-color: rgba(6, 26, 51, 0.08);
+}
+
+.bitacora-event-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bitacora-event-card-time-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bitacora-event-time {
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #0f172a;
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(6, 26, 51, 0.06);
+}
+
+.bitacora-event-title {
+  font-weight: 750;
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.bitacora-event-desc {
+  font-size: 0.88rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.bitacora-event-client-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #64748b;
+  background: #ffffff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 26, 51, 0.03);
+}
+
+.bitacora-event-client-info span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bitacora-event-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid rgba(6, 26, 51, 0.04);
+  padding-top: 10px;
+}
+
+.bitacora-badges-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bitacora-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.bitacora-badge.instalacion { background: #e0f2fe; color: #0369a1; }
+.bitacora-badge.detalle { background: #f3e8ff; color: #6b21a8; }
+.bitacora-badge.imprevista { background: #fee2e2; color: #991b1b; }
+.bitacora-badge.caja { background: #f0fdf4; color: #166534; }
+
+/* Detail labels */
+.bitacora-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  background: #f8fafc;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.88rem;
+  margin-bottom: 20px;
+}
+
+.bitacora-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bitacora-detail-item span {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bitacora-detail-item strong {
+  color: #0f172a;
+}

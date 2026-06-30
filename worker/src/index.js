@@ -8,6 +8,7 @@ import { handleReportesRoutes } from './routes/reportes.routes.js'
 import { handleTecnicoRoutes } from './routes/tecnico.routes.js'
 import { handleUsuariosRoutes } from './routes/usuarios.routes.js'
 import { handleCajasCercanasRoutes } from './routes/cajas-cercanas.routes.js'
+import { handleBitacoraTecnicosRoutes } from './routes/bitacora-tecnicos.routes.js'
 import { corsHeaders, withCors } from './utils/cors.js'
 import { json } from './utils/response.js'
 
@@ -58,6 +59,10 @@ export default {
 
       if (url.pathname.startsWith('/api/cajas-cercanas')) {
         return withCors(await handleCajasCercanasRoutes(request, env, url))
+      }
+
+      if (url.pathname.startsWith('/api/bitacora-tecnicos')) {
+        return withCors(await handleBitacoraTecnicosRoutes(request, env, url))
       }
 
       return withCors(json({ error: 'Ruta no encontrada' }, 404))
