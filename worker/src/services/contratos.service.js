@@ -131,7 +131,8 @@ export async function listContratosCliente(request, env, clienteId) {
     `SELECT id, numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
             r2_key, content_type, estado, aplica_reconexion,
             cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
-            costo_instalacion, vigencia_contrato, nombre_instalador, fecha_generado
+            costo_instalacion, vigencia_contrato, nombre_instalador, fecha_generado,
+            COALESCE(origen, 'GENERADO') AS origen
      FROM contratos
      WHERE cliente_id = ?
      ORDER BY id DESC`
@@ -182,13 +183,226 @@ export async function descargarContrato(request, env, contratoId) {
   })
 }
 
+function getShortHash(str) {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash
+  }
+  return Math.abs(hash).toString(16).slice(0, 6).toUpperCase()
+}
+
+export async function getContratosSugeridos(request, env, url) {
+  const auth = await requireAuth(request, env, ['ADMIN', 'ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'])
+  if (auth.response) return auth.response
+
+  const clienteId = Number(url.searchParams.get('cliente_id'))
+  if (!clienteId) return json({ ok: false, error: 'cliente_id es requerido' }, 400)
+
+  const cliente = await env.DB.prepare(
+    `SELECT clientes.id, clientes.nombres, clientes.apellido_paterno, clientes.apellido_materno, clientes.telefono,
+            comunidades.nombre AS comunidad_nombre
+     FROM clientes
+     JOIN comunidades ON comunidades.id = clientes.comunidad_id
+     WHERE clientes.id = ?`
+  ).bind(clienteId).first()
+
+  if (!cliente) return json({ ok: false, error: 'Cliente no encontrado' }, 404)
+
+  const cNombres = [cliente.nombres, cliente.apellido_paterno, cliente.apellido_materno].filter(Boolean).join(' ')
+  const folder = slugPath(cliente.comunidad_nombre) + '/'
+
+  validarBindingsContratos(env)
+  let objects = []
+  try {
+    const listResult = await env.CONTRATOS_BUCKET.list({ prefix: folder })
+    objects = listResult.objects || []
+  } catch (err) {
+    console.error('R2 list error:', err)
+  }
+
+  let files = objects.filter(obj => obj.key.toLowerCase().endsWith('.pdf'))
+
+  const clientNormalized = slugPath(cNombres)
+  const clientWords = clientNormalized.split('_').filter(Boolean)
+
+  let mappedResults = files.map(file => {
+    const key = file.key
+    const filename = key.substring(key.lastIndexOf('/') + 1)
+    const fileNormalized = slugPath(filename.replace(/\.pdf$/i, ''))
+
+    let score = 0
+
+    if (fileNormalized.includes(clientNormalized)) {
+      score = 100
+    } else {
+      let wordsFound = 0
+      for (const word of clientWords) {
+        if (fileNormalized.includes(word)) {
+          wordsFound++
+        }
+      }
+      if (clientWords.length > 0) {
+        score = Math.round((wordsFound / clientWords.length) * 80)
+      }
+    }
+
+    let numeroDetectado = null
+    const matchNum = filename.match(/_(\d+)\.pdf$/i) || filename.match(/(\d+)\.pdf$/i)
+    if (matchNum) {
+      numeroDetectado = matchNum[1]
+    }
+
+    return {
+      r2_key: key,
+      filename,
+      score,
+      numero_detectado: numeroDetectado
+    }
+  })
+
+  mappedResults.sort((a, b) => b.score - a.score || a.filename.localeCompare(b.filename))
+
+  const searchQuery = String(url.searchParams.get('q') || '').trim()
+  if (searchQuery) {
+    const qNorm = slugPath(searchQuery)
+    mappedResults = mappedResults.filter(item => {
+      const fnNorm = slugPath(item.filename)
+      return fnNorm.includes(qNorm) || item.r2_key.toLowerCase().includes(searchQuery.toLowerCase())
+    })
+  }
+
+  const limitedResults = mappedResults.slice(0, 20)
+
+  return json({
+    ok: true,
+    cliente: {
+      id: cliente.id,
+      nombre: cNombres,
+      comunidad: cliente.comunidad_nombre,
+      telefono: cliente.telefono || ''
+    },
+    resultados: limitedResults
+  })
+}
+
+export async function vincularContratoExistente(request, env) {
+  const auth = await requireAuth(request, env, ['ADMIN', 'ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'])
+  if (auth.response) return auth.response
+
+  const body = await request.json().catch(() => null)
+  if (!body) return json({ ok: false, error: 'Cuerpo de petición inválido.' }, 400)
+
+  const clienteId = Number(body.cliente_id)
+  const r2Key = String(body.r2_key || '').trim()
+
+  if (!clienteId || !r2Key) {
+    return json({ ok: false, error: 'cliente_id y r2_key son obligatorios.' }, 400)
+  }
+
+  const cliente = await env.DB.prepare(
+    `SELECT id, nombres FROM clientes WHERE id = ?`
+  ).bind(clienteId).first()
+  if (!cliente) return json({ ok: false, error: 'Cliente no encontrado.' }, 404)
+
+  const servicio = await env.DB.prepare(
+    `SELECT id FROM servicios_fibra WHERE cliente_id = ? AND estado_servicio = 'ACTIVO' LIMIT 1`
+  ).bind(clienteId).first()
+
+  if (!servicio) {
+    return json({
+      ok: false,
+      error: 'Este cliente no tiene servicio activo. Primero debe tener un servicio para poder vincular contrato.'
+    }, 400)
+  }
+
+  if (!r2Key.toLowerCase().endsWith('.pdf')) {
+    return json({ ok: false, error: 'El archivo debe ser un PDF.' }, 400)
+  }
+
+  validarBindingsContratos(env)
+  try {
+    const headResult = await env.CONTRATOS_BUCKET.head(r2Key)
+    if (!headResult) {
+      return json({ ok: false, error: 'El archivo del contrato no existe en R2.' }, 400)
+    }
+  } catch (err) {
+    return json({ ok: false, error: `Error al verificar archivo en R2: ${err.message}` }, 400)
+  }
+
+  let finalNumeroContrato = String(body.numero_contrato || '').trim()
+  if (!finalNumeroContrato) {
+    const filename = r2Key.substring(r2Key.lastIndexOf('/') + 1)
+    const matchNum = filename.match(/_(\d+)\.pdf$/i) || filename.match(/(\d+)\.pdf$/i)
+    if (matchNum) {
+      finalNumeroContrato = `R2-${matchNum[1]}`
+    } else {
+      finalNumeroContrato = `R2-${getShortHash(r2Key)}`
+    }
+  } else {
+    const rawNum = finalNumeroContrato.replace(/^r2-/i, '')
+    finalNumeroContrato = `R2-${rawNum}`
+  }
+
+  const dupNum = await env.DB.prepare(
+    `SELECT id FROM contratos WHERE numero_contrato = ? LIMIT 1`
+  ).bind(finalNumeroContrato).first()
+  if (dupNum) {
+    return json({ ok: false, error: `El número de contrato ${finalNumeroContrato} ya existe en el sistema.` }, 400)
+  }
+
+  const dupClient = await env.DB.prepare(
+    `SELECT id FROM contratos WHERE cliente_id = ? AND r2_key = ? AND estado IN ('GENERADO', 'REGENERADO') LIMIT 1`
+  ).bind(clienteId, r2Key).first()
+  if (dupClient) {
+    return json({ ok: false, error: 'Este contrato ya está vinculado a este cliente.' }, 400)
+  }
+
+  const dupOther = await env.DB.prepare(
+    `SELECT id, cliente_id FROM contratos WHERE r2_key = ? AND estado IN ('GENERADO', 'REGENERADO') LIMIT 1`
+  ).bind(r2Key).first()
+  if (dupOther) {
+    return json({ ok: false, error: 'Este contrato ya está vinculado a otro cliente. Revisa antes de continuar.' }, 400)
+  }
+
+  const result = await env.DB.prepare(
+    `INSERT INTO contratos (
+       numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
+       r2_key, content_type, estado, origen, aplica_reconexion,
+       cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
+       costo_instalacion, vigencia_contrato, nombre_instalador,
+       generado_por_usuario_id, fecha_generado
+     ) VALUES (?, ?, ?, NULL, ?, ?, 'GENERADO', 'EXISTENTE_R2', 'SI', 350, 'HUAWEI', 1, 800, 0, 'SIN PLAZO FORZOSO', 'SISTEMA', ?, datetime('now'))`
+  ).bind(
+    finalNumeroContrato,
+    clienteId,
+    servicio.id,
+    r2Key,
+    PDF_CONTENT_TYPE,
+    auth.session.usuario_id
+  ).run()
+
+  return json({
+    ok: true,
+    contrato: {
+      id: result.meta?.last_row_id,
+      numero_contrato: finalNumeroContrato,
+      r2_key: r2Key,
+      origen: 'EXISTENTE_R2',
+      estado: 'GENERADO'
+    }
+  }, 201)
+}
+
 async function getContratoById(env, contratoId) {
   return env.DB.prepare(
     `SELECT id, numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
             r2_key, content_type, estado, aplica_reconexion,
             cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
             costo_instalacion, vigencia_contrato, nombre_instalador,
-            generado_por_usuario_id, fecha_generado
+            generado_por_usuario_id, fecha_generado,
+            COALESCE(origen, 'GENERADO') AS origen
      FROM contratos
      WHERE id = ?`
   ).bind(contratoId).first()

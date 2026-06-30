@@ -4,7 +4,7 @@ import Swal from 'sweetalert2'
 const SPEED_OPTIONS = [10, 20, 30]
 const PAGE_LIMIT = 20
 
-function ClientesLista({ apiUrl, token }) {
+function ClientesLista({ apiUrl, token, roles = [] }) {
   const [clientes, setClientes] = useState([])
   const [comunidades, setComunidades] = useState([])
   const [q, setQ] = useState('')
@@ -13,6 +13,15 @@ function ClientesLista({ apiUrl, token }) {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_LIMIT, total: 0, total_pages: 1 })
+
+  // State for contract linking
+  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [suggestedContracts, setSuggestedContracts] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+  const [selectedContract, setSelectedContract] = useState(null)
+  const [customNumeroContrato, setCustomNumeroContrato] = useState('')
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
 
@@ -74,6 +83,123 @@ function ClientesLista({ apiUrl, token }) {
     setPage(1)
   }
 
+  function getShortHash(str) {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash
+    }
+    return Math.abs(hash).toString(16).slice(0, 6).toUpperCase()
+  }
+
+  const loadSuggestions = useCallback(async (clienteId, qVal) => {
+    setLoadingSuggestions(true)
+    try {
+      const params = new URLSearchParams({ cliente_id: String(clienteId) })
+      if (qVal) params.set('q', qVal)
+      const response = await fetch(`${apiUrl}/api/contratos/r2/sugerencias?${params.toString()}`, { headers: authHeaders })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'No se pudieron cargar sugerencias.')
+      setSuggestedContracts(data.resultados ?? [])
+    } catch (err) {
+      console.error(err)
+      setSuggestedContracts([])
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }, [apiUrl, authHeaders])
+
+  const handleOpenVincularModal = useCallback((cliente) => {
+    if (cliente.estado_servicio !== 'ACTIVO') {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Sin servicio activo',
+        text: 'Este cliente no tiene servicio activo. Primero debe tener un servicio para poder vincular contrato.',
+        confirmButtonColor: '#4274D9'
+      })
+      return
+    }
+    setSelectedCliente(cliente)
+    setIsModalOpen(true)
+    setSearchQuery('')
+    setSelectedContract(null)
+    setCustomNumeroContrato('')
+    loadSuggestions(cliente.id, '')
+  }, [loadSuggestions])
+
+  const handleSelectContract = (contract) => {
+    setSelectedContract(contract)
+    if (contract.numero_detectado) {
+      setCustomNumeroContrato(`R2-${contract.numero_detectado}`)
+    } else {
+      setCustomNumeroContrato(`R2-${getShortHash(contract.r2_key)}`)
+    }
+  }
+
+  const handleConfirmVincular = async () => {
+    if (!selectedContract) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'Por favor selecciona un contrato.', confirmButtonColor: '#4274D9' })
+      return
+    }
+    if (!customNumeroContrato.trim()) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'El número de contrato es obligatorio.', confirmButtonColor: '#4274D9' })
+      return
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/api/contratos/vincular-existente`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          cliente_id: selectedCliente.id,
+          r2_key: selectedContract.r2_key,
+          numero_contrato: customNumeroContrato.trim()
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'No se pudo vincular el contrato.')
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Vínculo Exitoso',
+        text: 'Contrato vinculado correctamente.',
+        confirmButtonColor: '#4274D9'
+      })
+
+      setIsModalOpen(false)
+      loadClientes()
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#4274D9' })
+    }
+  }
+
+  const handleVerContrato = async (contratoId) => {
+    try {
+      const response = await fetch(`${apiUrl}/api/contratos/${contratoId}/archivo`, {
+        headers: authHeaders
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        let errorMsg = 'No se pudo cargar el archivo del contrato.'
+        try {
+          const data = JSON.parse(text)
+          errorMsg = data.error ?? errorMsg
+        } catch {}
+        throw new Error(errorMsg)
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#4274D9' })
+    }
+  }
+
   const totalPages = Math.max(Number(pagination.total_pages ?? 1), 1)
 
   return (
@@ -132,17 +258,18 @@ function ClientesLista({ apiUrl, token }) {
                 <th>Cobro</th>
                 <th>Equipo</th>
                 <th>Estado</th>
+                <th>Contrato</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="7" className="table-empty">Cargando clientes...</td>
+                  <td colSpan="8" className="table-empty">Cargando clientes...</td>
                 </tr>
               )}
               {!loading && clientes.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="table-empty">No hay clientes para mostrar.</td>
+                  <td colSpan="8" className="table-empty">No hay clientes para mostrar.</td>
                 </tr>
               )}
               {!loading && clientes.map((cliente) => (
@@ -178,6 +305,27 @@ function ClientesLista({ apiUrl, token }) {
                   <td>
                     <span className="status-pill">{cliente.estado_servicio || cliente.estado_cliente || 'ACTIVO'}</span>
                   </td>
+                  <td>
+                    {cliente.contrato_id ? (
+                      <button
+                        type="button"
+                        className="fiber-link-button"
+                        style={{ fontWeight: 'bold' }}
+                        onClick={() => handleVerContrato(cliente.contrato_id)}
+                      >
+                        Ver contrato
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="fiber-primary-button"
+                        style={{ padding: '4px 10px', fontSize: '0.78rem', minHeight: 'auto', borderRadius: '8px' }}
+                        onClick={() => handleOpenVincularModal(cliente)}
+                      >
+                        Vincular
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,6 +344,127 @@ function ClientesLista({ apiUrl, token }) {
           </div>
         )}
       </section>
+
+      {isModalOpen && selectedCliente && (
+        <div className="client-modal-backdrop" onClick={() => setIsModalOpen(false)}>
+          <div className="client-modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', maxHeight: '90vh' }}>
+            <div className="client-modal-header">
+              <h3>Vincular Contrato Existente</h3>
+              <button type="button" onClick={() => setIsModalOpen(false)}>✕</button>
+            </div>
+            
+            <div style={{ padding: '20px 24px 0', fontSize: '0.9rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div>
+                  <strong>Cliente:</strong> {fullName(selectedCliente)}
+                </div>
+                <div>
+                  <strong>Comunidad:</strong> {selectedCliente.comunidad_nombre || 'Sin comunidad'}
+                </div>
+                <div>
+                  <strong>Teléfono:</strong> {selectedCliente.telefono || 'Sin teléfono'}
+                </div>
+                <div>
+                  <strong>Número Cliente:</strong> {selectedCliente.numero_cliente}
+                </div>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              className="client-search-input"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                loadSuggestions(selectedCliente.id, e.target.value);
+              }}
+              placeholder="Buscar por nombre o número de contrato viejo en la comunidad..."
+              style={{ margin: '16px 24px 12px' }}
+            />
+
+            <div className="client-results" style={{ padding: '0 24px 16px', maxHeight: '300px', overflowY: 'auto' }}>
+              {loadingSuggestions ? (
+                <p style={{ textAlign: 'center' }}>Cargando sugerencias de R2...</p>
+              ) : suggestedContracts.length === 0 ? (
+                <p style={{ textAlign: 'center' }}>
+                  No se encontraron contratos en la carpeta de esta comunidad.<br/>
+                  Puedes buscar manualmente con el cuadro de arriba.
+                </p>
+              ) : (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {suggestedContracts.map((item) => (
+                    <div
+                      key={item.r2_key}
+                      onClick={() => handleSelectContract(item)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: selectedContract?.r2_key === item.r2_key ? '2px solid #4274D9' : '1px solid #cbd5e1',
+                        background: selectedContract?.r2_key === item.r2_key ? '#eff6ff' : '#ffffff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ color: '#1e293b', fontSize: '0.9rem', wordBreak: 'break-all' }}>{item.filename}</strong>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: item.score >= 80 ? '#dcfce7' : item.score >= 50 ? '#fef9c3' : '#f1f5f9',
+                          color: item.score >= 80 ? '#166534' : item.score >= 50 ? '#854d0e' : '#475569'
+                        }}>
+                          {item.score}% coincidencia
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', wordBreak: 'break-all' }}>{item.r2_key}</span>
+                      {item.numero_detectado && (
+                        <span style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: '2px' }}>
+                          Número detectado: {item.numero_detectado}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {selectedContract && (
+              <div style={{ padding: '0 24px 20px', borderTop: '1px solid #e2e8f0', paddingTop: '16px', background: '#f8fafc' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
+                  Confirmar Número de Contrato (se guardará con prefijo R2-)
+                </label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="text"
+                    value={customNumeroContrato}
+                    onChange={(e) => setCustomNumeroContrato(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.95rem'
+                    }}
+                    placeholder="Ej. R2-494"
+                  />
+                  <button
+                    type="button"
+                    className="fiber-primary-button"
+                    onClick={handleConfirmVincular}
+                    style={{ minHeight: 'auto', padding: '10px 20px' }}
+                  >
+                    Vincular Contrato
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -120,7 +120,7 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
           </div>
         ) : activeView === 'clientes-ver' ? (
           <div className="dashboard-content">
-            {canUseClientes ? <ClientesLista apiUrl={apiUrl} token={token} /> : <AccessDenied title="Clientes" />}
+            {canUseClientes ? <ClientesLista apiUrl={apiUrl} token={token} roles={roles} /> : <AccessDenied title="Clientes" />}
           </div>
         ) : activeView === 'prospectos' ? (
           <div className="dashboard-content">

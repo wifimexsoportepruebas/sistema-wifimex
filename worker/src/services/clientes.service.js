@@ -92,7 +92,10 @@ export async function listClientes(request, env, url) {
        caja_terminales.numero_terminal AS caja_terminal_numero,
        paquetes.nombre AS paquete_nombre,
        paquetes.velocidad_megas,
-       ciclos_corte.nombre AS ciclo_corte_nombre
+       ciclos_corte.nombre AS ciclo_corte_nombre,
+       (SELECT id FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_id,
+       (SELECT r2_key FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_r2_key,
+       (SELECT COALESCE(origen, 'GENERADO') FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_origen
      FROM clientes
      JOIN comunidades ON comunidades.id = clientes.comunidad_id
      LEFT JOIN servicios_fibra ON servicios_fibra.cliente_id = clientes.id
