@@ -40,6 +40,7 @@ const menuItems = [
     view: 'empleados',
     roles: ['ADMIN'],
   },
+  { label: 'Cajas cercanas', icon: 'CC', view: 'cajas-cercanas', roles: ['TECNICO', 'TECNICO_FIBRA', 'ADMIN'] },
   { label: 'Mis Tareas', icon: 'MA', view: 'tecnico', roles: ['TECNICO', 'TECNICO_FIBRA'] },
 ]
 

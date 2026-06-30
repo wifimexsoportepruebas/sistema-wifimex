@@ -1,0 +1,320 @@
+.cajas-cercanas-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px);
+  gap: 20px;
+  padding: 0;
+}
+
+.cajas-cercanas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 0 24px;
+}
+
+.cajas-cercanas-content {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: 1;
+  min-height: 0;
+  background: #ffffff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(6, 26, 51, 0.05);
+}
+
+@media (min-width: 768px) {
+  .cajas-cercanas-content {
+    grid-template-columns: 1fr 400px;
+  }
+}
+
+.cajas-cercanas-map-panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 350px;
+}
+
+.cajas-cercanas-map-panel .leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+}
+
+.cajas-cercanas-sidebar {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(6, 26, 51, 0.06);
+  background: #f8fafc;
+  height: 100%;
+  min-height: 0;
+}
+
+.cajas-cercanas-search-bar {
+  padding: 16px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(6, 26, 51, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cajas-cercanas-search-bar input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(6, 26, 51, 0.12);
+  font: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  background: #f8fbfe;
+}
+
+.cajas-cercanas-search-bar input:focus {
+  border-color: rgba(66, 116, 217, 0.5);
+  box-shadow: 0 0 0 3px rgba(66, 116, 217, 0.15);
+}
+
+.cajas-cercanas-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.caja-cercana-card {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(6, 26, 51, 0.06);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.caja-cercana-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(66, 116, 217, 0.25);
+  box-shadow: 0 10px 25px rgba(6, 26, 51, 0.06);
+}
+
+.caja-cercana-card.selected {
+  border-color: #4274d9;
+  background: rgba(66, 116, 217, 0.03);
+  box-shadow: 0 8px 20px rgba(66, 116, 217, 0.08);
+}
+
+.caja-cercana-card.caja-green-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #10b981;
+}
+
+.caja-cercana-card.caja-yellow-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #f59e0b;
+}
+
+.caja-cercana-card.caja-red-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #ef4444;
+}
+
+.caja-cercana-card.caja-gray-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #94a3b8;
+}
+
+.caja-cercana-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.caja-cercana-card-title {
+  font-weight: 800;
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.caja-cercana-card-subtitle {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.caja-cercana-card-distance {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.caja-cercana-card-closest-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.caja-cercana-card-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.caja-cercana-card-stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Custom Leaflet Markers */
+.fiber-map-marker {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+.fiber-map-marker span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.fiber-map-marker.caja-green {
+  background: #10b981;
+}
+
+.fiber-map-marker.caja-yellow {
+  background: #f59e0b;
+}
+
+.fiber-map-marker.caja-red {
+  background: #ef4444;
+}
+
+.fiber-map-marker.caja-gray {
+  background: #94a3b8;
+}
+
+.fiber-map-marker.tech {
+  background: #3b82f6;
+  animation: marker-pulse-anim 1.8s infinite;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+}
+
+.fiber-map-marker.tech span {
+  width: 10px;
+  height: 10px;
+}
+
+@keyframes marker-pulse-anim {
+  0% {
+    box-shadow: 0 0 0 0px rgba(59, 130, 246, 0.8);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0px rgba(59, 130, 246, 0);
+  }
+}
+
+/* Geolocation Warning Box */
+.geo-warning-box {
+  margin: 0 24px 16px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #b45309;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Modal details list of terminals */
+.terminal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.terminal-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 26, 51, 0.08);
+  background: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.terminal-badge.libre {
+  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.04);
+  color: #065f46;
+}
+
+.terminal-badge.ocupado {
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.04);
+  color: #991b1b;
+}
+
+.terminal-badge.reservado {
+  border-color: rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.04);
+  color: #92400e;
+}
+
+.terminal-badge.danado {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(148, 163, 184, 0.04);
+  color: #334155;
+}

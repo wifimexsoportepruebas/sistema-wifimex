@@ -10,6 +10,7 @@ import ClientesAlta from '../clientes/ClientesAlta.jsx'
 import ClientesLista from '../clientes/ClientesLista.jsx'
 import CajasFibra from '../infraestructura/CajasFibra.jsx'
 import Prospectos from '../prospectos/Prospectos.jsx'
+import CajasCercanas from '../tecnico/CajasCercanas.jsx'
 
 const roleProfiles = {
   ADMIN: { label: 'Administracion' },
@@ -36,6 +37,7 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
   const canCreateReportes = roles.some((role) => ['ADMIN', 'ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'].includes(role))
   const canUseRutaOperativa = roles.includes('ADMIN')
   const canUseInfraestructura = roles.some((role) => ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'].includes(role))
+  const canUseCajasCercanas = roles.some((role) => ['TECNICO', 'TECNICO_FIBRA', 'ADMIN'].includes(role))
 
   useEffect(() => {
     function syncViewFromHash() {
@@ -121,6 +123,10 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
         ) : activeView === 'clientes-ver' ? (
           <div className="dashboard-content">
             {canUseClientes ? <ClientesLista apiUrl={apiUrl} token={token} roles={roles} /> : <AccessDenied title="Clientes" />}
+          </div>
+        ) : activeView === 'cajas-cercanas' ? (
+          <div className="dashboard-content">
+            {canUseCajasCercanas ? <CajasCercanas apiUrl={apiUrl} token={token} roles={roles} /> : <AccessDenied title="Cajas cercanas" />}
           </div>
         ) : activeView === 'prospectos' ? (
           <div className="dashboard-content">
