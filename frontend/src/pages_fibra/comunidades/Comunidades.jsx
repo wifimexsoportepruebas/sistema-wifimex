@@ -18,6 +18,8 @@ function Comunidades({ apiUrl, token }) {
   const [prefijo, setPrefijo] = useState('')
   const [numeroInicial, setNumeroInicial] = useState('')
   const [siguienteNumero, setSiguienteNumero] = useState('')
+  const [vlan, setVlan] = useState('')
+  const [oltIp, setOltIp] = useState('')
   const [latitud, setLatitud] = useState('')
   const [longitud, setLongitud] = useState('')
   const [activo, setActivo] = useState(true)
@@ -54,6 +56,8 @@ function Comunidades({ apiUrl, token }) {
     setPrefijo('')
     setNumeroInicial('1000')
     setSiguienteNumero('1000')
+    setVlan('')
+    setOltIp('')
     setLatitud('')
     setLongitud('')
     setActivo(true)
@@ -66,6 +70,8 @@ function Comunidades({ apiUrl, token }) {
     setPrefijo(c.prefijo ?? '')
     setNumeroInicial(String(c.numero_inicial ?? ''))
     setSiguienteNumero(String(c.siguiente_numero ?? ''))
+    setVlan(c.vlan !== null && c.vlan !== undefined ? String(c.vlan) : '')
+    setOltIp(c.olt_ip ?? '')
     setLatitud(c.latitud !== null ? String(c.latitud) : '')
     setLongitud(c.longitud !== null ? String(c.longitud) : '')
     setActivo(c.activo === 1)
@@ -118,6 +124,8 @@ function Comunidades({ apiUrl, token }) {
     const nextNumVal = Number(siguienteNumero)
     const latVal = latitud !== '' ? Number(latitud) : null
     const lngVal = longitud !== '' ? Number(longitud) : null
+    const vlanVal = vlan !== '' ? Number(vlan) : null
+    const oltIpVal = oltIp.trim() !== '' ? oltIp.trim() : null
 
     // Validations
     if (!nameVal) {
@@ -144,12 +152,23 @@ function Comunidades({ apiUrl, token }) {
       Swal.fire({ icon: 'warning', title: 'Validación', text: 'La longitud debe ser un número entre -180 y 180.', confirmButtonColor: '#4274D9' })
       return
     }
+    if (vlanVal !== null && (isNaN(vlanVal) || !Number.isInteger(vlanVal) || vlanVal < 1 || vlanVal > 4094)) {
+      Swal.fire({ icon: 'warning', title: 'Validación', text: 'La VLAN debe ser un número entero entre 1 y 4094.', confirmButtonColor: '#4274D9' })
+      return
+    }
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+    if (oltIpVal !== null && !ipv4Regex.test(oltIpVal)) {
+      Swal.fire({ icon: 'warning', title: 'Validación', text: 'El formato de la IP de la OLT debe ser una dirección IPv4 válida (ej. 172.18.1.14).', confirmButtonColor: '#4274D9' })
+      return
+    }
 
     const payload = {
       nombre: nameVal,
       prefijo: prefVal,
       numero_inicial: numInitVal,
       siguiente_numero: nextNumVal,
+      vlan: vlanVal,
+      olt_ip: oltIpVal,
       latitud: latVal,
       longitud: lngVal,
       activo: activo ? 1 : 0
@@ -256,6 +275,8 @@ function Comunidades({ apiUrl, token }) {
                 <th>Prefijo</th>
                 <th>Número Inicial</th>
                 <th>Siguiente Número</th>
+                <th>VLAN</th>
+                <th>OLT</th>
                 <th>Latitud</th>
                 <th>Longitud</th>
                 <th>Estado</th>
@@ -265,12 +286,12 @@ function Comunidades({ apiUrl, token }) {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>Cargando comunidades...</td>
+                  <td colSpan="11" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>Cargando comunidades...</td>
                 </tr>
               )}
               {!loading && comunidades.length === 0 && (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>No se encontraron comunidades.</td>
+                  <td colSpan="11" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>No se encontraron comunidades.</td>
                 </tr>
               )}
               {!loading && comunidades.map((c) => (
@@ -280,6 +301,8 @@ function Comunidades({ apiUrl, token }) {
                   <td><span className="soft-pill">{c.prefijo || '-'}</span></td>
                   <td>{c.numero_inicial ?? '-'}</td>
                   <td>{c.siguiente_numero ?? '-'}</td>
+                  <td><span className="vlan-tag" style={c.vlan ? { background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: '600', color: '#475569' } : {}}>{c.vlan ?? '-'}</span></td>
+                  <td><span className="olt-ip-text" style={c.olt_ip ? { fontFamily: 'monospace', fontSize: '0.85rem' } : {}}>{c.olt_ip || '-'}</span></td>
                   <td>{c.latitud !== null ? c.latitud.toFixed(6) : 'N/A'}</td>
                   <td>{c.longitud !== null ? c.longitud.toFixed(6) : 'N/A'}</td>
                   <td>
@@ -386,6 +409,33 @@ function Comunidades({ apiUrl, token }) {
                       placeholder="Ej. 1000"
                       required
                     />
+                  </div>
+                </div>
+
+                <div className="comunidades-form-grid">
+                  <div className="comunidades-filter-group">
+                    <label htmlFor="form-vlan">VLAN (opcional)</label>
+                    <input
+                      id="form-vlan"
+                      type="number"
+                      min="1"
+                      max="4094"
+                      value={vlan}
+                      onChange={(e) => setVlan(e.target.value)}
+                      placeholder="Ej. 200"
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px', display: 'block' }}>Número de VLAN de la comunidad.</small>
+                  </div>
+                  <div className="comunidades-filter-group">
+                    <label htmlFor="form-olt-ip">OLT (opcional)</label>
+                    <input
+                      id="form-olt-ip"
+                      type="text"
+                      value={oltIp}
+                      onChange={(e) => setOltIp(e.target.value)}
+                      placeholder="Ej. 172.18.1.14"
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px', display: 'block' }}>IP de la OLT asociada a la comunidad.</small>
                   </div>
                 </div>
 

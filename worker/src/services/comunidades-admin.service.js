@@ -56,12 +56,17 @@ export async function getComunidadesAdmin(request, env, url) {
          prefijo,
          numero_inicial_cliente AS numero_inicial,
          siguiente_numero_cliente AS siguiente_numero,
+         vlan,
+         olt_ip,
          latitud,
          longitud,
          activo
        FROM comunidades
        ${whereStr}
-       ORDER BY nombre ASC`
+       ORDER BY 
+         CASE WHEN numero_inicial_cliente IS NULL THEN 1 ELSE 0 END,
+         numero_inicial_cliente ASC, 
+         nombre ASC`
     ).bind(...params).all()
 
     return json({ ok: true, resumen, comunidades: results || [] })
@@ -82,6 +87,8 @@ export async function getComunidadById(request, env, id) {
          prefijo,
          numero_inicial_cliente AS numero_inicial,
          siguiente_numero_cliente AS siguiente_numero,
+         vlan,
+         olt_ip,
          latitud,
          longitud,
          activo
@@ -112,6 +119,8 @@ export async function crearComunidad(request, env) {
     const latitud = body.latitud !== null && body.latitud !== undefined && body.latitud !== '' ? Number(body.latitud) : null
     const longitud = body.longitud !== null && body.longitud !== undefined && body.longitud !== '' ? Number(body.longitud) : null
     const activo = body.activo !== undefined ? (body.activo ? 1 : 0) : 1
+    const vlan = body.vlan !== null && body.vlan !== undefined && body.vlan !== '' ? Number(body.vlan) : null
+    const olt_ip = body.olt_ip !== null && body.olt_ip !== undefined && body.olt_ip !== '' ? String(body.olt_ip).trim() : null
 
     // Validations
     if (!nombre) return json({ ok: false, error: 'El nombre es obligatorio.' }, 400)
@@ -128,6 +137,13 @@ export async function crearComunidad(request, env) {
     if (!isValidCoordinate(longitud, -180, 180)) {
       return json({ ok: false, error: 'La longitud debe estar en el rango de -180 a 180.' }, 400)
     }
+    if (vlan !== null && (isNaN(vlan) || !Number.isInteger(vlan) || vlan < 1 || vlan > 4094)) {
+      return json({ ok: false, error: 'La VLAN debe ser un número entero entre 1 y 4094.' }, 400)
+    }
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+    if (olt_ip !== null && !ipv4Regex.test(olt_ip)) {
+      return json({ ok: false, error: 'El formato de la IP de la OLT no es una dirección IPv4 válida (ej. 172.18.1.14).' }, 400)
+    }
 
     // Duplicate check globally (rule 8: block duplicates in all communities, active and inactive)
     const duplicateNombre = await env.DB.prepare('SELECT 1 FROM comunidades WHERE UPPER(nombre) = ?').bind(nombre).first()
@@ -141,9 +157,9 @@ export async function crearComunidad(request, env) {
     }
 
     const result = await env.DB.prepare(
-      `INSERT INTO comunidades (nombre, prefijo, numero_inicial_cliente, siguiente_numero_cliente, latitud, longitud, activo)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(nombre, prefijo, numero_inicial, siguiente_numero, latitud, longitud, activo).run()
+      `INSERT INTO comunidades (nombre, prefijo, numero_inicial_cliente, siguiente_numero_cliente, latitud, longitud, activo, vlan, olt_ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(nombre, prefijo, numero_inicial, siguiente_numero, latitud, longitud, activo, vlan, olt_ip).run()
 
     return json({
       ok: true,
@@ -173,6 +189,8 @@ export async function editarComunidad(request, env, id) {
     const latitud = body.latitud !== null && body.latitud !== undefined && body.latitud !== '' ? Number(body.latitud) : null
     const longitud = body.longitud !== null && body.longitud !== undefined && body.longitud !== '' ? Number(body.longitud) : null
     const activo = body.activo !== undefined ? (body.activo ? 1 : 0) : 1
+    const vlan = body.vlan !== null && body.vlan !== undefined && body.vlan !== '' ? Number(body.vlan) : null
+    const olt_ip = body.olt_ip !== null && body.olt_ip !== undefined && body.olt_ip !== '' ? String(body.olt_ip).trim() : null
 
     // Validations
     if (!nombre) return json({ ok: false, error: 'El nombre es obligatorio.' }, 400)
@@ -189,6 +207,13 @@ export async function editarComunidad(request, env, id) {
     if (!isValidCoordinate(longitud, -180, 180)) {
       return json({ ok: false, error: 'La longitud debe estar en el rango de -180 a 180.' }, 400)
     }
+    if (vlan !== null && (isNaN(vlan) || !Number.isInteger(vlan) || vlan < 1 || vlan > 4094)) {
+      return json({ ok: false, error: 'La VLAN debe ser un número entero entre 1 y 4094.' }, 400)
+    }
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+    if (olt_ip !== null && !ipv4Regex.test(olt_ip)) {
+      return json({ ok: false, error: 'El formato de la IP de la OLT no es una dirección IPv4 válida (ej. 172.18.1.14).' }, 400)
+    }
 
     // Duplicate check globally excluding the current community ID
     const duplicateNombre = await env.DB.prepare('SELECT 1 FROM comunidades WHERE UPPER(nombre) = ? AND id != ?').bind(nombre, id).first()
@@ -203,9 +228,9 @@ export async function editarComunidad(request, env, id) {
 
     await env.DB.prepare(
       `UPDATE comunidades 
-       SET nombre = ?, prefijo = ?, numero_inicial_cliente = ?, siguiente_numero_cliente = ?, latitud = ?, longitud = ?, activo = ?
+       SET nombre = ?, prefijo = ?, numero_inicial_cliente = ?, siguiente_numero_cliente = ?, latitud = ?, longitud = ?, activo = ?, vlan = ?, olt_ip = ?
        WHERE id = ?`
-    ).bind(nombre, prefijo, numero_inicial, siguiente_numero, latitud, longitud, activo, id).run()
+    ).bind(nombre, prefijo, numero_inicial, siguiente_numero, latitud, longitud, activo, vlan, olt_ip, id).run()
 
     return json({ ok: true, message: 'Comunidad actualizada correctamente.' })
   } catch (error) {
