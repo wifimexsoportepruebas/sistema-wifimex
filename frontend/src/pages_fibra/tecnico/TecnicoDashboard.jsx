@@ -1122,7 +1122,20 @@ function SignaturePad({ onChange, clearSignal, initialValue }) {
     event.preventDefault()
     drawingRef.current = false
     canvasRef.current.releasePointerCapture?.(event.pointerId)
-    onChange(canvasRef.current.toDataURL('image/png'))
+    
+    try {
+      const canvas = canvasRef.current
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = 250
+      tempCanvas.height = 100
+      const ctx = tempCanvas.getContext('2d')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+      ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height)
+      onChange(tempCanvas.toDataURL('image/jpeg', 0.6))
+    } catch (err) {
+      onChange(canvasRef.current.toDataURL('image/png'))
+    }
   }
 
   return (

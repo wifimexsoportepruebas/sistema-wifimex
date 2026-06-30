@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { requireAuth } from '../utils/auth.js'
 import { json } from '../utils/response.js'
+import { LOGO_BASE64 } from '../utils/logo.js'
 
 const CONTRATO_ESTADO_GENERADO = 'GENERADO'
 const CONTRATO_COUNTER_KEY = 'contador-contratos'
@@ -267,148 +268,439 @@ async function buildContratoPdf(data) {
   const pdfDoc = await PDFDocument.create()
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-  let page = pdfDoc.addPage([595.28, 841.89])
-  const margin = 42
-  const width = page.getWidth()
-  let y = page.getHeight() - margin
+  
+  // Page 1: Carátula (Letter size: 612 x 792 pt)
+  let page1 = pdfDoc.addPage([612, 792])
+  
+  // Embed logo
+  let logoImage = null
+  try {
+    const logoBytes = base64ToBytes(LOGO_BASE64)
+    logoImage = await pdfDoc.embedPng(logoBytes)
+  } catch (err) {
+    console.error('Error embedding logo:', err)
+  }
+  
+  // Colors
+  const black = rgb(0, 0, 0)
+  const darkBlue = rgb(0.11, 0.32, 0.63)
+  const grayText = rgb(0.39, 0.45, 0.55)
+  const lightGrayBg = rgb(0.93, 0.95, 0.98)
+  const lightGrayBorder = rgb(0.8, 0.82, 0.85)
+  const redText = rgb(0.85, 0.1, 0.1)
 
-  const drawText = (text, x, yy, options = {}) => {
-    page.drawText(safeText(text), {
-      x,
-      y: yy,
-      size: options.size ?? 10,
-      font: options.bold ? bold : regular,
-      color: options.color ?? rgb(0.06, 0.09, 0.16),
-    })
+  // 1. Header (Logo, Title, Contract Number)
+  if (logoImage) {
+    page1.drawImage(logoImage, { x: 36, y: 720, width: 95, height: 35.8 })
+  }
+  
+  page1.drawText('CONTRATO DE SERVICIO', {
+    x: 155,
+    y: 735,
+    size: 18,
+    font: bold,
+    color: darkBlue
+  })
+  
+  page1.drawText(`N. de contrato: ${safeText(data.numero_contrato)}`, {
+    x: 440,
+    y: 715,
+    size: 11,
+    font: bold,
+    color: black
+  })
+
+  // 2. Personal Data
+  // Name
+  page1.drawText('NOMBRE:', { x: 36, y: 685, size: 9, font: bold, color: darkBlue })
+  page1.drawRectangle({
+    x: 100,
+    y: 679,
+    width: 476,
+    height: 18,
+    color: lightGrayBg,
+    borderColor: lightGrayBorder,
+    borderWidth: 0.5
+  })
+  const clientName = fullName(data, 'cliente')
+  page1.drawText(safeText(clientName), { x: 105, y: 684, size: 9, font: regular, color: black })
+
+  // Address
+  page1.drawText('DIRECCIÓN:', { x: 36, y: 659, size: 9, font: bold, color: darkBlue })
+  page1.drawRectangle({
+    x: 100,
+    y: 653,
+    width: 476,
+    height: 18,
+    color: lightGrayBg,
+    borderColor: lightGrayBorder,
+    borderWidth: 0.5
+  })
+  page1.drawText(safeText(data.cliente_direccion), { x: 105, y: 658, size: 9, font: regular, color: black })
+  
+  // Sub-labels for address
+  page1.drawText('CALLE                 N. EXT               N. INT               COLONIA               ALCALDIA/MUNICIPIO', {
+    x: 105,
+    y: 643,
+    size: 6.5,
+    font: regular,
+    color: grayText
+  })
+
+  // Phones
+  page1.drawText('Teléfono móvil:', { x: 36, y: 622, size: 9, font: regular, color: black })
+  page1.drawLine({ start: { x: 105, y: 621 }, end: { x: 250, y: 621 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.cliente_telefono || 'N/A'), { x: 115, y: 623, size: 9, font: regular, color: black })
+
+  page1.drawText('Teléfono fijo:', { x: 320, y: 622, size: 9, font: regular, color: black })
+  page1.drawLine({ start: { x: 385, y: 621 }, end: { x: 530, y: 621 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.cliente_telefono || 'N/A'), { x: 395, y: 623, size: 9, font: regular, color: black })
+
+  // 3. Service Box
+  page1.drawRectangle({
+    x: 36,
+    y: 515,
+    width: 540,
+    height: 90,
+    borderColor: black,
+    borderWidth: 1.2
+  })
+  // Header of box
+  page1.drawRectangle({
+    x: 36,
+    y: 587,
+    width: 540,
+    height: 18,
+    color: lightGrayBg,
+    borderColor: black,
+    borderWidth: 1
+  })
+  page1.drawText('SERVICIO DE INTERNET FIJO EN CASA/NEGOCIO', {
+    x: 170,
+    y: 592,
+    size: 10,
+    font: bold,
+    color: darkBlue
+  })
+  // Vertical line division
+  page1.drawLine({ start: { x: 306, y: 515 }, end: { x: 306, y: 587 }, color: black, thickness: 1 })
+
+  // Left col: Description
+  page1.drawText('DESCRIPCIÓN PAQUETE/OFERTA', {
+    x: 46,
+    y: 568,
+    size: 9,
+    font: bold,
+    color: darkBlue
+  })
+  const packName = packageName(data) || 'N/A'
+  page1.drawText(safeText(packName), {
+    x: 46,
+    y: 540,
+    size: 10,
+    font: bold,
+    color: black
+  })
+
+  // Right col: Prices
+  page1.drawText('TOTAL MENSUALIDAD:', { x: 316, y: 568, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 435, y: 567 }, end: { x: 515, y: 567 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.precio_mensual), { x: 440, y: 569, size: 9, font: bold, color: black })
+
+  page1.drawText('FECHA DE PAGO:', { x: 316, y: 548, size: 8.5, font: bold, color: black })
+  const paymentDateStr = formatCicloCorte(data.ciclo_corte_nombre)
+  page1.drawText(safeText(paymentDateStr), { x: 405, y: 548, size: 9, font: bold, color: darkBlue })
+
+  page1.drawText('MODALIDAD DE PAGO:', { x: 316, y: 528, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 435, y: 527 }, end: { x: 535, y: 527 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.contrato_modalidad_pago || 'SIN DEFINIR'), { x: 440, y: 529, size: 9, font: regular, color: black })
+
+  // 4. Vigencia Row
+  page1.drawText('VIGENCIA DEL CONTRATO:', { x: 36, y: 492, size: 8.5, font: bold, color: black })
+  page1.drawText(safeText(data.vigencia_contrato || 'SIN PLAZO FORZOSO'), { x: 165, y: 492, size: 8.5, font: bold, color: redText })
+
+  page1.drawText('APLICA TARIFA POR RECONEXIÓN:', { x: 316, y: 492, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 472, y: 491 }, end: { x: 495, y: 491 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.contrato_aplica_reconexion || 'SI'), { x: 478, y: 493, size: 8.5, font: bold, color: black })
+
+  page1.drawText('CANTIDAD:', { x: 502, y: 492, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 555, y: 491 }, end: { x: 576, y: 491 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.contrato_cantidad_reconexion ?? 350), { x: 557, y: 493, size: 8.5, font: bold, color: black })
+
+  // 5. Equipment and Installation Box
+  page1.drawRectangle({
+    x: 36,
+    y: 390,
+    width: 540,
+    height: 90,
+    borderColor: black,
+    borderWidth: 1.2
+  })
+  page1.drawLine({ start: { x: 306, y: 390 }, end: { x: 306, y: 480 }, color: black, thickness: 1 })
+
+  // Left col: Equipment
+  page1.drawText('DATOS DEL EQUIPO', { x: 105, y: 465, size: 9.5, font: bold, color: darkBlue })
+  
+  page1.drawText('MARCA:', { x: 46, y: 446, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 92, y: 445 }, end: { x: 210, y: 445 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.contrato_marca_equipo || 'HUAWEI'), { x: 105, y: 447, size: 8.5, font: bold, color: black })
+
+  page1.drawText('NÚMERO DE SERIE:', { x: 46, y: 428, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 142, y: 427 }, end: { x: 290, y: 427 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.alfanumerico_equipo || 'N/A'), { x: 147, y: 429, size: 8.5, font: bold, color: black })
+
+  page1.drawText('NÚMERO DE EQUIPOS:', { x: 46, y: 410, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 158, y: 409 }, end: { x: 210, y: 409 }, color: black, thickness: 0.5 })
+  page1.drawText(String(data.contrato_numero_equipos ?? 1), { x: 178, y: 411, size: 8.5, font: bold, color: black })
+
+  page1.drawText('COSTO EQUIPO/PENALIDAD:', { x: 46, y: 392, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 182, y: 391 }, end: { x: 250, y: 391 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.contrato_costo_equipo_penalidad), { x: 187, y: 393, size: 8.5, font: bold, color: black })
+
+  // Right col: Installation
+  page1.drawText('INSTALACIÓN', { x: 385, y: 465, size: 9.5, font: bold, color: darkBlue })
+  
+  const { date: installDate, time: installTime } = getInstalacionDateTime(data.servicio_fecha_instalacion || data.fecha_instalacion)
+  
+  page1.drawText('FECHA:', { x: 316, y: 446, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 358, y: 445 }, end: { x: 450, y: 445 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(installDate), { x: 368, y: 447, size: 8.5, font: bold, color: black })
+
+  page1.drawText('HORA:', { x: 316, y: 428, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 352, y: 427 }, end: { x: 440, y: 427 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(installTime), { x: 362, y: 429, size: 8.5, font: bold, color: black })
+
+  page1.drawText('COSTO DE INSTALACIÓN:', { x: 316, y: 410, size: 8.5, font: bold, color: black })
+  page1.drawLine({ start: { x: 442, y: 409 }, end: { x: 510, y: 409 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.contrato_costo_instalacion), { x: 452, y: 411, size: 8.5, font: bold, color: black })
+
+  // 6. Red Warning Text
+  const warningText = 'EL PROVEEDOR DEBERÁ EFECTUAR LAS INSTALACIONES Y EMPEZAR A PRESTAR EL SERVICIO EN UN PLAZO QUE NO EXCEDA DE 10 DÍAS NATURALES POSTERIORES A LA FIRMA DE CONTRATO.'
+  page1.drawText(warningText, {
+    x: 55,
+    y: 368,
+    size: 6,
+    font: bold,
+    color: redText
+  })
+
+  // 7. Signatures Area
+  page1.drawLine({ start: { x: 60, y: 298 }, end: { x: 240, y: 298 }, color: black, thickness: 0.8 })
+  page1.drawText('FIRMA CLIENTE', { x: 110, y: 286, size: 8, font: bold, color: black })
+  await drawSignaturePdfLib(pdfDoc, page1, data.firma_cliente_base64, 70, 300, 160, 50)
+
+  page1.drawLine({ start: { x: 372, y: 298 }, end: { x: 552, y: 298 }, color: black, thickness: 0.8 })
+  const techLabel = `FIRMA TÉCNICO: ${data.nombre_instalador || 'TECNICO WIFIMEX'}`
+  page1.drawText(safeText(techLabel), { x: 372, y: 286, size: 8, font: bold, color: black })
+  await drawSignaturePdfLib(pdfDoc, page1, data.firma_tecnico_base64, 382, 300, 160, 50)
+
+  // 8. Materials Section
+  drawMaterialRow(page1, 36, 238, 'FIBRA ÓPTICA', data.fibra_optica_metros)
+  drawMaterialRow(page1, 36, 226, 'TENSOR GANCHO', data.tensor_gancho)
+  drawMaterialRow(page1, 36, 214, 'ARGOLLAS', data.argollas)
+  // Table 2
+  drawMaterialRow(page1, 216, 238, 'TAQUETES', data.taquetes)
+  drawMaterialRow(page1, 216, 226, 'SUJETADORES', data.sujetadores)
+  drawMaterialRow(page1, 216, 214, 'ROSETA', data.roseta)
+  // Table 3
+  drawMaterialRow(page1, 396, 238, 'TERMINAL', data.caja_terminal_numero)
+  drawMaterialRow(page1, 396, 226, 'PUERTO', data.codigo_caja || data.caja_nombre)
+  drawMaterialRow(page1, 396, 214, 'POTENCIA', data.potencia !== null && data.potencia !== undefined ? `${data.potencia} dBm` : 'N/A')
+
+  // 9. Footer
+  page1.drawLine({ start: { x: 36, y: 155 }, end: { x: 576, y: 155 }, color: grayText, thickness: 0.5 })
+  
+  // Left footer
+  page1.drawText('Horario de atención:', { x: 36, y: 140, size: 7.5, font: bold, color: black })
+  page1.drawText('Lunes a Viernes: 8:00 AM A 6:00 PM', { x: 36, y: 128, size: 7.5, font: regular, color: black })
+  page1.drawText('Sábado: 8:00 AM A 2:00 PM', { x: 36, y: 116, size: 7.5, font: regular, color: black })
+
+  // Right footer
+  page1.drawText('WIFI-MEX SERVICIO DE INTERNET', { x: 350, y: 140, size: 7.5, font: bold, color: black })
+  page1.drawText('74-71-24-03-27', { x: 350, y: 128, size: 7.5, font: regular, color: black })
+  page1.drawText('AGUA POTABLE, PRINCIPAL S/N C.P. 39070', { x: 350, y: 116, size: 7.5, font: regular, color: black })
+  page1.drawText('CHILPANCINGO DE LOS BRAVO, GRO. MÉXICO', { x: 350, y: 104, size: 7.5, font: regular, color: black })
+  page1.drawText('wifimexatencionaclientes@gmail.com', { x: 350, y: 92, size: 7.5, font: regular, color: black })
+
+  // ==========================================
+  // PAGE 2: Texto legal (Declaraciones y Cláusulas)
+  // ==========================================
+  let page2 = pdfDoc.addPage([612, 792])
+
+  // Small Logo top left
+  if (logoImage) {
+    page2.drawImage(logoImage, { x: 36, y: 745, width: 70, height: 26.3 })
   }
 
-  const ensureSpace = (height) => {
-    if (y - height > margin) return
-    page = pdfDoc.addPage([595.28, 841.89])
-    y = page.getHeight() - margin
-  }
+  // Top right header page 2
+  page2.drawText('WIFI-MEX SERVICIO DE INTERNET', { x: 440, y: 765, size: 6.5, font: bold, color: black })
+  page2.drawText('74-71-24-03-27', { x: 440, y: 757, size: 6.5, font: regular, color: black })
+  page2.drawText('AGUA POTABLE, PRINCIPAL S/N C.P. 39070', { x: 440, y: 749, size: 6.5, font: regular, color: black })
+  page2.drawText('CHILPANCINGO DE LOS BRAVO, GRO, MÉXICO.', { x: 440, y: 741, size: 6.5, font: regular, color: black })
 
-  const title = (text) => {
-    ensureSpace(38)
-    page.drawRectangle({ x: margin, y: y - 22, width: width - margin * 2, height: 22, color: rgb(0.16, 0.21, 0.51) })
-    drawText(text, margin + 10, y - 15, { size: 10, bold: true, color: rgb(1, 1, 1) })
-    y -= 34
-  }
+  // Large center title page 2
+  const mainTitle2_1 = 'CONTRATO DE PRESTACIÒN DE SERVICIOS DE INTERNET FIJO EN CASA QUE CELEBRARA POR UNA PARTE'
+  const mainTitle2_2 = 'DE WIFI-MEX Y POR OTRA PARTE EL CLIENTE AL TENOR DE SIGUIENTE.'
+  page2.drawText(mainTitle2_1, { x: 90, y: 715, size: 7.5, font: bold, color: black })
+  page2.drawText(mainTitle2_2, { x: 150, y: 705, size: 7.5, font: bold, color: black })
 
-  const row = (label, value) => {
-    ensureSpace(18)
-    drawText(`${label}:`, margin, y, { bold: true })
-    drawWrappedText(page, value || 'N/A', margin + 150, y, width - margin * 2 - 150, regular, 10)
-    y -= 18
-  }
+  // Declaraciones Header
+  page2.drawText('DECLARACIONES', { x: 265, y: 685, size: 7.5, font: bold, color: black })
 
-  drawText('WiFiMex Fibra Central', margin, y, { size: 18, bold: true, color: rgb(0.16, 0.21, 0.51) })
-  drawText('CONTRATO DE SERVICIO DE INTERNET', margin, y - 24, { size: 15, bold: true })
-  drawText(`Contrato: ${data.numero_contrato}`, margin, y - 46, { size: 11, bold: true })
-  drawText(`Fecha: ${formatDate(new Date())}`, width - margin - 150, y - 46, { size: 10 })
-  y -= 76
+  // Declaraciones texts
+  let decY = 672
+  const decA = 'A) QUE LOS DATOS CONSISTENTES EN EL DOMICILIO Y DATOS DE LOCALIZACIÓN DEL DOMICILIO SON CIERTOS Y SE ENCUENTRAN ESTABLECIDOS EN LA CARÁTULA DEL PRESENTE CONTRATO.'
+  const decB = 'B) QUE TIENEN PLENO GOCE DE SUS DERECHOS Y CAPACIDAD LEGAL PARA CONTRATAR Y OBLIGARSE EN TÉRMINOS DEL PRESENTE CONTRATO.'
+  const decC = 'C) QUE LA MANIFESTACIÓN DE LA VOLUNTAD PARA ADHERIRSE AL PRESENTE CONTRATO DE ADHESIÓN Y SU CARÁTULA (LA CUAL FORMA PARTE INTEGRANTE DEL REFERIDO CONTRATO) SE TOMARAN EN CUENTA LAS FIRMAS QUE PLASMEN AMBAS PARTES EN LA CARÁTULA.'
+  const decD = 'D) QUE ES SU VOLUNTAD CELEBRAR EL PRESENTE CONTRATO SUJETÁNDOSE A LAS SIGUIENTES:'
 
-  title('Datos del cliente')
-  row('Numero de cliente', data.numero_cliente)
-  row('Nombre completo', fullName(data, 'cliente'))
-  row('Telefono movil', data.cliente_telefono)
-  row('Telefono fijo', data.cliente_telefono)
-  row('Direccion', data.cliente_direccion)
-  row('Comunidad', data.comunidad_nombre)
-  row('Vigencia', data.vigencia_contrato)
+  decY = drawTextColumn(page2, decA, 36, decY, 540, regular, 6.5, 1.25)
+  decY -= 2
+  decY = drawTextColumn(page2, decB, 36, decY, 540, regular, 6.5, 1.25)
+  decY -= 2
+  decY = drawTextColumn(page2, decC, 36, decY, 540, regular, 6.5, 1.25)
+  decY -= 2
+  decY = drawTextColumn(page2, decD, 36, decY, 540, regular, 6.5, 1.25)
 
-  title('Datos del servicio')
-  row('Paquete', packageName(data))
-  row('Precio mensual', formatCurrency(data.precio_mensual))
-  row('Ciclo de corte', data.ciclo_corte_nombre)
-  row('IP asignada', data.ip_asignada)
-  row('Alfanumerico del equipo', data.alfanumerico_equipo)
-  row('Fecha de instalacion', data.servicio_fecha_instalacion || data.fecha_instalacion)
+  // Cláusulas Header
+  page2.drawText('CLÁUSULAS', { x: 280, y: decY - 14, size: 7.5, font: bold, color: black })
+  
+  // Left Column clauses (x=36, width=260)
+  let col1Y = decY - 30
+  
+  const c1_1 = 'PRIMERA: OBJETO DEL CONTRATO. Wifi-Mex se obliga a prestar el servicio de internet fijo en casa, (en adelante el servicio), de manera continua, uniforme, regular y eficiente, a cambio del pago de la tarifa, plan o paquete que el CLIENTE haya seleccionado en la carátula del presente contrato.'
+  const c1_2 = 'El presente contrato se regirá bajo una instalación gratis y bajo el esquema de Prepago, cuando el usuario paga por los servicios de telecomunicaciones, antes de utilizarlos, se regirá por una renta mensual.'
+  const c1_3 = 'Wifi-Mex es el único responsable frente al CLIENTE por la prestación del SERVICIO, así como, de los bienes o servicios adicionales contratados.'
+  const c1_4 = 'Todo lo pactado o contratado entre el CLIENTE y Wifi-Mex de manera verbal o electrónica se le debe confirmar por escrito al CLIENTE a través del medio que él elija, en un plazo máximo de diez días hábiles, contados a partir del momento en que se realice el pacto o contratación.'
+  const c2_1 = 'SEGUNDA: SIN PLAZO FORZOSO. Sí el cliente decide cancelar tendrá que notificar con un mes de anticipación, a través del mismo medio en el cual contrató el servicio o por los medios de contacto señalados en la carátula.'
+  const c2_2 = 'El CLIENTE puede negarse, sin responsabilidad alguna para él, a la instalación o activación del servicio ante la negativa del personal de Wifi-Mex a identificarse y/o a mostrar la orden de trabajo. Situación que debe informar a Wifi-Mex en ese momento.'
+  const c2_3 = 'Los planes, paquetes, cobertura donde Wifi-Mex puede prestar el servicio y tarifas se pueden consultar por los medios establecidos en la carátula del presente contrato.'
+  const c2_4 = 'La fecha, forma y lugares de pago se pueden consultar por los medios señalados en la carátula del presente contrato.'
+  const c3_1 = 'TERCERA: MODIFICACIONES. Wifi-Mex dará aviso al CLIENTE, cuando menos con 15 días naturales de anticipación, de cualquier cambio en los términos y condiciones originalmente contratados. Dicho aviso deberá ser notificado, a través de medios físicos o electrónicos o digitales o de cualquier otra nueva tecnología que lo permita.'
 
-  title('Datos tecnicos de instalacion')
-  row('Instalador', data.nombre_instalador)
-  row('Marca del equipo', data.contrato_marca_equipo)
-  row('Numero de equipos', data.contrato_numero_equipos)
-  row('Costo equipo / penalidad', formatCurrency(data.contrato_costo_equipo_penalidad))
-  row('Costo de instalacion', formatCurrency(data.contrato_costo_instalacion))
-  row('Aplica reconexion', data.contrato_aplica_reconexion)
-  row('Cantidad reconexion', formatCurrency(data.contrato_cantidad_reconexion))
-  row('Modalidad de pago', data.contrato_modalidad_pago)
-  row('Caja', data.codigo_caja || data.caja_nombre)
-  row('Terminal', data.caja_terminal_numero ? `Terminal ${data.caja_terminal_numero}` : null)
-  row('Potencia', data.potencia != null ? `${data.potencia} dBm` : null)
-  row('Fibra optica usada', `${data.fibra_optica_metros ?? 0} m`)
-  row('Tensor gancho', data.tensor_gancho)
-  row('Argollas', data.argollas)
-  row('Taquetes', data.taquetes)
-  row('Sujetadores', data.sujetadores)
-  row('Roseta', data.roseta)
+  col1Y = drawTextColumn(page2, c1_1, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c1_2, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c1_3, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c1_4, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 8
+  col1Y = drawTextColumn(page2, c2_1, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c2_2, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c2_3, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 4
+  col1Y = drawTextColumn(page2, c2_4, 36, col1Y, 260, regular, 6.5, 1.2)
+  col1Y -= 8
+  col1Y = drawTextColumn(page2, c3_1, 36, col1Y, 260, regular, 6.5, 1.2)
 
-  title('Reporte')
-  row('Numero de reporte', data.reporte_id)
-  row('Fecha de cierre', data.fecha_completado)
-  row('Comentario de cierre', data.comentario_cierre || data.comentario_tecnico)
+  // Right Column clauses (x=316, width=260)
+  let col2Y = decY - 30
 
-  ensureSpace(150)
-  title('Firmas')
-  await drawSignature(pdfDoc, page, data.firma_cliente_base64, margin, y - 72, 220, 62, 'Firma del cliente', bold, regular)
-  await drawSignature(pdfDoc, page, data.firma_tecnico_base64, margin + 270, y - 72, 220, 62, 'Firma del tecnico', bold, regular)
-  y -= 118
+  const c4_1 = 'CUARTA: SUSPENSIÓN DEL SERVICIO. Wifi-Mex podrá suspender el Servicio, previa notificación por escrito al CLIENTE, si este último incurre en cualquiera de los siguientes supuestos:'
+  const c4_2 = '1.- Por pagos parciales de la tarifa aplicable al SERVICIO.'
+  const c4_3 = '2.- Por falta de pago del SERVICIO después de 1 día natural posteriores a la fecha de pago señalada en la carátula del presente contrato.'
+  const c5_1 = 'QUINTA: TERMINACIÓN Y CANCELACIÓN DEL CONTRATO. El Presente contrato se podrá cancelar por cualquiera de las partes sin responsabilidad para ellas en los siguientes casos: a) Por la imposibilidad permanente de Wifi-Mex para continuar con la prestación del SERVICIO, ya sea por caso fortuito o fuerza mayor. b) Si el CLIENTE no subsana en un término de 30 días naturales cualquiera de las causas que dieron origen a la suspensión del SERVICIO.'
+  const c5_2 = 'El CLIENTE podrá dar por terminado el contrato en cualquier momento con 30 (treinta) días naturales de anticipación al hecho, dando únicamente el aviso al proveedor a través del mismo medio por el cual contrató el servicio, o a través los medios físicos o electrónicos o digitales o de cualquier otra nueva tecnología que lo permita. La cancelación o terminación del Contrato no exime al CLIENTE de pagar a Wifi-MEX los adeudos generados por el/los Servicio(s) efectivamente recibido(s), y hasta en tanto no realice el proceso de cancelación y/o terminación el servicio se seguirá facturando.'
+  const c5_3 = 'Es responsabilidad del CLIENTE llevar a cabo las medidas requeridas para cuidar y salvaguardar su información, datos y/o software de su propiedad, de accesos desde internet a sus dispositivos o, en su caso, evitar una contaminación por virus o ataques de usuarios de internet, por lo que Wifi-MEX no será responsable de cualquier daño y perjuicio causado al CLIENTE por los hechos antes mencionados.'
+  const c6_1 = 'SEXTA: EL CLIENTE podrá presentar sus quejas por fallas y/o deficiencias en el servicio y/o equipos; así como consultas, contrataciones, cancelaciones, sugerencias y reclamaciones a Wifi-Mex de manera gratuita por los medios señalados en la carátula.'
 
-  drawWrappedText(
-    page,
-    'Documento generado automaticamente por el Sistema WiFiMex Fibra Central al confirmar la instalacion.',
-    margin,
-    margin,
-    width - margin * 2,
-    regular,
-    8
-  )
+  col2Y = drawTextColumn(page2, c4_1, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 4
+  col2Y = drawTextColumn(page2, c4_2, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 4
+  col2Y = drawTextColumn(page2, c4_3, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 8
+  col2Y = drawTextColumn(page2, c5_1, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 4
+  col2Y = drawTextColumn(page2, c5_2, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 4
+  col2Y = drawTextColumn(page2, c5_3, 316, col2Y, 260, regular, 6.5, 1.2)
+  col2Y -= 8
+  col2Y = drawTextColumn(page2, c6_1, 316, col2Y, 260, regular, 6.5, 1.2)
 
   return pdfDoc.save()
 }
 
-async function drawSignature(pdfDoc, page, dataUrl, x, y, width, height, label, bold, regular) {
-  page.drawText(label, { x, y: y + height + 10, size: 9, font: bold, color: rgb(0.06, 0.09, 0.16) })
-  page.drawRectangle({ x, y, width, height, borderColor: rgb(0.75, 0.8, 0.86), borderWidth: 1 })
-
+// Helpers for buildContratoPdf
+async function drawSignaturePdfLib(pdfDoc, page, dataUrl, x, y, width, height) {
   const imageInfo = parseImageDataUrl(dataUrl)
-  if (!imageInfo) {
-    page.drawText('Firma no disponible', { x: x + 10, y: y + 26, size: 8, font: regular, color: rgb(0.39, 0.45, 0.55) })
-    return
-  }
+  if (!imageInfo) return
 
   try {
     const image = imageInfo.mime === 'image/png'
       ? await pdfDoc.embedPng(imageInfo.bytes)
       : await pdfDoc.embedJpg(imageInfo.bytes)
-    const scaled = image.scaleToFit(width - 14, height - 12)
+    const scaled = image.scaleToFit(width, height)
     page.drawImage(image, {
       x: x + (width - scaled.width) / 2,
       y: y + (height - scaled.height) / 2,
       width: scaled.width,
       height: scaled.height,
     })
-  } catch {
-    page.drawText('Firma guardada en sistema', { x: x + 10, y: y + 26, size: 8, font: regular, color: rgb(0.39, 0.45, 0.55) })
+  } catch (err) {
+    console.error('Error drawing signature:', err)
   }
 }
 
-function drawWrappedText(page, text, x, y, maxWidth, font, size) {
-  const words = safeText(text || 'N/A').split(/\s+/)
+function drawMaterialRow(p, x, y, label, val) {
+  const black = rgb(0, 0, 0)
+  p.drawRectangle({ x, y, width: 110, height: 12, borderColor: black, borderWidth: 0.5 })
+  p.drawText(safeText(label), { x: x + 4, y: y + 3, size: 6.5, font: p.getFont() ?? StandardFonts.HelveticaBold, color: black })
+  
+  p.drawRectangle({ x: x + 110, y, width: 50, height: 12, borderColor: black, borderWidth: 0.5 })
+  p.drawText(safeText(String(val ?? 0)), { x: x + 114, y: y + 3, size: 6.5, font: p.getFont() ?? StandardFonts.HelveticaBold, color: black })
+}
+
+function getInstalacionDateTime(fechaInstalacion) {
+  if (!fechaInstalacion) return { date: 'N/A', time: 'N/A' }
+  const parts = String(fechaInstalacion).split(' ')
+  if (parts.length >= 2) {
+    const dateParts = parts[0].split('-')
+    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : parts[0]
+    const timeParts = parts[1].split(':')
+    const formattedTime = timeParts.length >= 2 ? `${timeParts[0]}:${timeParts[1]} hrs` : parts[1]
+    return { date: formattedDate, time: formattedTime }
+  }
+  try {
+    const d = new Date(fechaInstalacion)
+    if (!isNaN(d.getTime())) {
+      const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+      const formattedTime = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} hrs`
+      return { date: formattedDate, time: formattedTime }
+    }
+  } catch {}
+  return { date: fechaInstalacion, time: 'N/A' }
+}
+
+function formatCicloCorte(nombre) {
+  if (!nombre) return 'N/A'
+  const match = String(nombre).match(/^CORTE\s+(\d+-\d+)$/i)
+  if (match) return `${match[1]} de cada mes`
+  return nombre
+}
+
+function drawTextColumn(page, text, x, y, width, font, size, lineGap = 1.3) {
+  const words = String(text || '').split(/\s+/)
   let line = ''
-  let offset = 0
+  let currentY = y
   for (const word of words) {
     const testLine = line ? `${line} ${word}` : word
-    if (font.widthOfTextAtSize(testLine, size) <= maxWidth) {
+    if (font.widthOfTextAtSize(testLine, size) <= width) {
       line = testLine
-      continue
+    } else {
+      page.drawText(line, { x, y: currentY, size, font })
+      currentY -= (size * lineGap)
+      line = word
     }
-    page.drawText(safeText(line), { x, y: y - offset, size, font, color: rgb(0.06, 0.09, 0.16) })
-    offset += size + 3
-    line = word
   }
-  if (line) page.drawText(safeText(line), { x, y: y - offset, size, font, color: rgb(0.06, 0.09, 0.16) })
+  if (line) {
+    page.drawText(line, { x, y: currentY, size, font })
+    currentY -= (size * lineGap)
+  }
+  return currentY
 }
 
 function parseImageDataUrl(value) {
