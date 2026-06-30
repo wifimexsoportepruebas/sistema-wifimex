@@ -147,7 +147,7 @@ export async function listReportes(request, env, url) {
   const confirmacion = url.searchParams.get('confirmacion') === '1'
 
   if (confirmacion) {
-    filters.push("reportes.estado IN ('PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO')")
+    filters.push("reportes.estado IN ('PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO', 'EN_PROCESO', 'ASIGNADO')")
   } else if (fecha) {
     filters.push('date(reportes.fecha_reportada) = date(?)')
     values.push(fecha)
@@ -197,7 +197,6 @@ export async function listReportes(request, env, url) {
        instalaciones_fibra.contrato_cantidad_reconexion,
        instalaciones_fibra.contrato_costo_equipo_penalidad,
        instalaciones_fibra.contrato_costo_instalacion,
-       instalaciones_fibra.contrato_modalidad_pago,
        instalaciones_fibra.paquete_instalacion_id,
        paquete_instalacion.nombre AS paquete_instalacion_nombre,
        instalaciones_fibra.alfanumerico_equipo,
@@ -659,11 +658,64 @@ export async function reagendarReporte(request, env, reporteId) {
 
   const body = await request.json().catch(() => null)
   const fechaProgramada = String(body?.fecha_programada ?? '').trim()
-  if (!fechaProgramada) return json({ ok: false, error: 'La fecha programada es obligatoria' }, 400)
+  const modo = String(body?.modo ?? '').trim().toUpperCase()
 
   const reporte = await getReporteById(env, reporteId)
   if (!reporte) return json({ ok: false, error: 'Reporte no encontrado' }, 404)
-  if (!['NO_LOCALIZADO', 'PENDIENTE_CONFIRMACION', 'EN_PROCESO', 'ASIGNADO'].includes(reporte.estado)) {
+  if (['COMPLETADO', 'CANCELADO', 'PENDIENTE_CONFIRMACION'].includes(reporte.estado)) {
+    return json({ ok: false, error: 'Este reporte no se puede reagendar' }, 400)
+  }
+
+  if (modo === 'MISMO_TECNICO') {
+    if (!['EN_PROCESO', 'ASIGNADO'].includes(reporte.estado)) {
+      return json({ ok: false, error: 'Solo se puede restablecer un reporte asignado o en proceso.' }, 400)
+    }
+    if (!reporte.tecnico_id) return json({ ok: false, error: 'Este reporte no tiene tecnico asignado.' }, 400)
+
+    await env.DB.prepare(
+      `UPDATE reportes
+       SET estado = 'ASIGNADO',
+           fecha_programada = COALESCE(?, fecha_programada)
+       WHERE id = ?`
+    ).bind(fechaProgramada || null, reporteId).run()
+    await insertReporteSeguimiento(
+      env,
+      reporteId,
+      auth.session.usuario_id,
+      'ASIGNADO',
+      'REPORTE REAGENDADO POR ATENCION/SOPORTE. SE MANTIENE EL TECNICO ASIGNADO.'
+    )
+
+    return json({ ok: true, estado: 'ASIGNADO', message: 'Reporte reagendado correctamente.' })
+  }
+
+  if (modo === 'LIBERAR') {
+    if (!['EN_PROCESO', 'ASIGNADO', 'NO_LOCALIZADO'].includes(reporte.estado)) {
+      return json({ ok: false, error: 'Este reporte no se puede liberar para reasignacion.' }, 400)
+    }
+    await env.DB.prepare(
+      `UPDATE reportes
+       SET fecha_programada = COALESCE(?, fecha_programada),
+           tecnico_id = NULL,
+           orden_ruta = NULL,
+           fecha_asignacion = NULL,
+           asignado_por_usuario_id = NULL,
+           estado = 'PENDIENTE'
+       WHERE id = ?`
+    ).bind(fechaProgramada || null, reporteId).run()
+    await insertReporteSeguimiento(
+      env,
+      reporteId,
+      auth.session.usuario_id,
+      'PENDIENTE',
+      'REPORTE LIBERADO POR ATENCION/SOPORTE. PENDIENTE DE NUEVA ASIGNACION.'
+    )
+
+    return json({ ok: true, estado: 'PENDIENTE', message: 'Reporte liberado para reasignacion.' })
+  }
+
+  if (!fechaProgramada) return json({ ok: false, error: 'La fecha programada es obligatoria' }, 400)
+  if (!['NO_LOCALIZADO', 'EN_PROCESO', 'ASIGNADO'].includes(reporte.estado)) {
     return json({ ok: false, error: 'Este reporte no se puede reagendar' }, 400)
   }
 
@@ -796,13 +848,18 @@ async function validateInstalacionConfirmacion(env, reporteId, cicloCorteId) {
     ['contrato_cantidad_reconexion', 'Falta la cantidad de reconexion para contrato.'],
     ['contrato_costo_equipo_penalidad', 'Falta el costo equipo / penalidad para contrato.'],
     ['contrato_costo_instalacion', 'Falta el costo de instalacion para contrato.'],
-    ['contrato_modalidad_pago', 'Falta la modalidad de pago para contrato.'],
   ]
 
   for (const [field, message] of requiredFields) {
     if (instalacion[field] === null || instalacion[field] === undefined || String(instalacion[field]).trim() === '') {
       return { response: json({ ok: false, error: message }, 400) }
     }
+  }
+  if (!isSignatureImage(instalacion.firma_cliente_base64)) {
+    return { response: json({ ok: false, error: 'Falta la firma del cliente.' }, 400) }
+  }
+  if (!isSignatureImage(instalacion.firma_tecnico_base64)) {
+    return { response: json({ ok: false, error: 'Falta la firma del tecnico.' }, 400) }
   }
 
   instalacion.prospecto_id = instalacion.prospecto_id ?? instalacion.reporte_prospecto_id
@@ -955,12 +1012,18 @@ function nullableText(value) {
   return text || null
 }
 
+function isSignatureImage(value) {
+  const raw = String(value ?? '').trim()
+  if (/^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(raw)) return true
+  return raw.startsWith('iVBOR') || raw.startsWith('/9j/')
+}
+
 export async function getReporteById(env, reporteId) {
   return env.DB.prepare('SELECT id, estado, tecnico_id, tipo_reporte, prospecto_id, cliente_id FROM reportes WHERE id = ?').bind(reporteId).first()
 }
 
 export async function insertReporteSeguimiento(env, reporteId, usuarioId, estado, comentario) {
-  const estadosPermitidosSeguimiento = ['ASIGNADO', 'EN_PROCESO', 'PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO', 'COMPLETADO', 'CANCELADO']
+  const estadosPermitidosSeguimiento = ['PENDIENTE', 'ASIGNADO', 'EN_PROCESO', 'PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO', 'COMPLETADO', 'CANCELADO']
   if (!estadosPermitidosSeguimiento.includes(estado)) return
 
   await env.DB.prepare(

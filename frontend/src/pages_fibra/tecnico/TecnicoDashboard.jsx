@@ -17,7 +17,6 @@ const initialInstallationForm = {
   contrato_costo_instalacion: '0',
   contrato_aplica_reconexion: 'SI',
   contrato_cantidad_reconexion: '350',
-  contrato_modalidad_pago: 'SIN DEFINIR',
   caja_id: '',
   caja_terminal_id: '',
   fibra_optica_metros: '0',
@@ -252,7 +251,6 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
         contrato_costo_instalacion: String(instalacion?.contrato_costo_instalacion ?? '0'),
         contrato_aplica_reconexion: instalacion?.contrato_aplica_reconexion ?? 'SI',
         contrato_cantidad_reconexion: String(instalacion?.contrato_cantidad_reconexion ?? '350'),
-        contrato_modalidad_pago: instalacion?.contrato_modalidad_pago ?? 'SIN DEFINIR',
         caja_id: instalacion?.caja_id ? String(instalacion.caja_id) : '',
         caja_terminal_id: instalacion?.caja_terminal_id ? String(instalacion.caja_terminal_id) : '',
         fibra_optica_metros: String(instalacion?.fibra_optica_metros ?? '0'),
@@ -453,7 +451,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
     }
 
     if (!clientSignature) {
-      Swal.fire({ icon: 'warning', title: 'Firma requerida', text: 'Captura la firma del cliente para solicitar cierre.', confirmButtonColor: '#4274D9' })
+      Swal.fire({ icon: 'warning', title: 'Falta la firma del cliente.', text: 'Solicita la firma antes de enviar la instalacion a confirmacion.', confirmButtonColor: '#4274D9' })
       return
     }
 
@@ -490,7 +488,6 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
       contrato_costo_instalacion: Number(installationForm.contrato_costo_instalacion || 0),
       contrato_aplica_reconexion: installationForm.contrato_aplica_reconexion,
       contrato_cantidad_reconexion: Number(installationForm.contrato_cantidad_reconexion || 0),
-      contrato_modalidad_pago: installationForm.contrato_modalidad_pago,
       caja_id: Number(installationForm.caja_id),
       caja_terminal_id: Number(installationForm.caja_terminal_id),
       fibra_optica_metros: Number(installationForm.fibra_optica_metros || 0),
@@ -765,14 +762,6 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                   </select>
                 </label>
                 <NumberField label="Cantidad de reconexion" value={installationForm.contrato_cantidad_reconexion} onChange={(value) => updateInstallationForm('contrato_cantidad_reconexion', value)} step="0.01" />
-                <label>
-                  Modalidad de pago
-                  <select value={installationForm.contrato_modalidad_pago} onChange={(event) => updateInstallationForm('contrato_modalidad_pago', event.target.value)} required>
-                    {['SIN DEFINIR', 'EFECTIVO', 'TRANSFERENCIA', 'DEPOSITO', 'TARJETA', 'OTRO'].map((mode) => (
-                      <option key={mode} value={mode}>{mode}</option>
-                    ))}
-                  </select>
-                </label>
               </div>
             </section>
 
@@ -1132,9 +1121,18 @@ function SignaturePad({ onChange, clearSignal, initialValue }) {
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
       ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height)
+      if (!signatureCanvasHasInk(tempCanvas)) {
+        onChange('')
+        return
+      }
       onChange(tempCanvas.toDataURL('image/jpeg', 0.6))
     } catch (err) {
-      onChange(canvasRef.current.toDataURL('image/png'))
+      const canvas = canvasRef.current
+      if (!signatureCanvasHasInk(canvas)) {
+        onChange('')
+        return
+      }
+      onChange(canvas.toDataURL('image/png'))
     }
   }
 
@@ -1185,6 +1183,22 @@ function drawSignatureImage(canvas, dataUrl) {
     context.drawImage(image, 0, 0, rect.width, rect.height)
   }
   image.src = dataUrl
+}
+
+function signatureCanvasHasInk(canvas) {
+  const context = canvas.getContext('2d')
+  const { width, height } = canvas
+  if (!width || !height) return false
+  const pixels = context.getImageData(0, 0, width, height).data
+  for (let index = 0; index < pixels.length; index += 4) {
+    const alpha = pixels[index + 3]
+    if (alpha === 0) continue
+    const red = pixels[index]
+    const green = pixels[index + 1]
+    const blue = pixels[index + 2]
+    if (red < 245 || green < 245 || blue < 245) return true
+  }
+  return false
 }
 
 function formatSubject(reporte) {

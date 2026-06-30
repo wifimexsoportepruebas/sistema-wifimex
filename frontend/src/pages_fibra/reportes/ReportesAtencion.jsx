@@ -373,6 +373,33 @@ function ReportesAtencion({ apiUrl, token }) {
     await patchReporte(reporte, 'reagendar', { fecha_programada: result.value }, 'Reporte reagendado')
   }
 
+  async function restablecerReporte(reporte) {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Reagendar este reporte?',
+      html: `
+        <p>El reporte volvera a estar asignado y el tecnico podra iniciarlo nuevamente.</p>
+        <label class="swal2-label">Fecha programada</label>
+        <input id="restore-report-date" type="date" class="swal2-input" value="${todayDate()}" />
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Reagendar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4274D9',
+      cancelButtonColor: '#64748b',
+      preConfirm: () => {
+        const fecha = document.getElementById('restore-report-date')?.value
+        if (!fecha) {
+          Swal.showValidationMessage('Selecciona una fecha.')
+          return false
+        }
+        return fecha
+      },
+    })
+    if (!result.isConfirmed) return
+    await patchReporte(reporte, 'reagendar', { modo: 'MISMO_TECNICO', fecha_programada: result.value }, 'Reporte reagendado correctamente')
+  }
+
   async function cancelarReporte(reporte) {
     const result = await Swal.fire({
       icon: 'warning',
@@ -555,6 +582,9 @@ function ReportesAtencion({ apiUrl, token }) {
                     <button type="button" className="fiber-secondary-button" onClick={() => regresarTecnico(reporte)}>Regresar a tecnico</button>
                   </>
                 )}
+                {['EN_PROCESO', 'ASIGNADO'].includes(reporte.estado) && (
+                  <button type="button" className="fiber-secondary-button" onClick={() => restablecerReporte(reporte)}>Reagendar</button>
+                )}
               </footer>
             </article>
           ))}
@@ -676,13 +706,12 @@ function InstallationReview({ reporte, onViewPhoto }) {
         <p><strong>Costo de instalacion:</strong> {formatCurrency(reporte.contrato_costo_instalacion)}</p>
         <p><strong>Tarifa por reconexion:</strong> {reporte.contrato_aplica_reconexion || 'Sin dato'}</p>
         <p><strong>Cantidad de reconexion:</strong> {formatCurrency(reporte.contrato_cantidad_reconexion)}</p>
-        <p><strong>Modalidad de pago:</strong> {reporte.contrato_modalidad_pago || 'SIN DEFINIR'}</p>
       </section>
 
       <section>
         <h4>Evidencia</h4>
-        <p><strong>Firma cliente:</strong> {reporte.firma_cliente_base64 ? 'Capturada' : 'Sin firma'}</p>
-        <p><strong>Firma tecnico:</strong> {reporte.firma_tecnico_base64 ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma cliente:</strong> {isSignatureImage(reporte.firma_cliente_base64) ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma tecnico:</strong> {isSignatureImage(reporte.firma_tecnico_base64) ? 'Capturada' : 'Sin firma'}</p>
         {reporte.foto_router_r2_key ? (
           <button type="button" className="fiber-secondary-button" onClick={() => onViewPhoto(reporte)}>Ver foto del router detras</button>
         ) : (
@@ -724,8 +753,8 @@ function buildInstallationConfirmationHtml(reporte, ciclosCorte) {
         <p><strong>Terminal:</strong> ${escapeHtml(reporte.caja_terminal_numero || reporte.terminal || 'Falta seleccionar caja y terminal.')}</p>
         <p><strong>Potencia:</strong> ${escapeHtml(reporte.potencia ?? 'Sin dato')}</p>
         <p><strong>Materiales:</strong> fibra ${escapeHtml(formatNumber(reporte.fibra_optica_metros))} m, tensor ${escapeHtml(formatNumber(reporte.tensor_gancho))}, argollas ${escapeHtml(formatNumber(reporte.argollas))}, taquetes ${escapeHtml(formatNumber(reporte.taquetes))}, sujetadores ${escapeHtml(formatNumber(reporte.sujetadores))}, roseta ${escapeHtml(formatNumber(reporte.roseta))}</p>
-        <p><strong>Firma cliente:</strong> ${reporte.firma_cliente_base64 ? 'Capturada' : 'Sin firma'}</p>
-        <p><strong>Firma tecnico:</strong> ${reporte.firma_tecnico_base64 ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma cliente:</strong> ${isSignatureImage(reporte.firma_cliente_base64) ? 'Capturada' : 'Sin firma'}</p>
+        <p><strong>Firma tecnico:</strong> ${isSignatureImage(reporte.firma_tecnico_base64) ? 'Capturada' : 'Sin firma'}</p>
         <p><strong>Foto del router detras:</strong> ${reporte.foto_router_r2_key ? 'Capturada' : 'Sin foto'}</p>
       </section>
       <label>
@@ -778,7 +807,6 @@ function buildContractPreviewHtml(reporte, ciclo, ipAsignada) {
         <p><strong>Costo equipo / penalidad:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_equipo_penalidad))}</p>
         <p><strong>Costo instalacion:</strong> ${escapeHtml(formatCurrency(reporte.contrato_costo_instalacion))}</p>
         <p><strong>Reconexion:</strong> ${escapeHtml(reporte.contrato_aplica_reconexion || 'Sin dato')} - ${escapeHtml(formatCurrency(reporte.contrato_cantidad_reconexion))}</p>
-        <p><strong>Modalidad pago:</strong> ${escapeHtml(reporte.contrato_modalidad_pago || 'SIN DEFINIR')}</p>
       </section>
       <section>
         <h4>Instalacion</h4>
@@ -843,6 +871,12 @@ function formatNumber(value) {
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+}
+
+function isSignatureImage(value) {
+  const raw = String(value ?? '').trim()
+  if (/^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(raw)) return true
+  return raw.startsWith('iVBOR') || raw.startsWith('/9j/')
 }
 
 function escapeHtml(value) {

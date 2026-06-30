@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS contratos (
   r2_key TEXT NOT NULL,
   content_type TEXT NOT NULL DEFAULT 'application/pdf',
   estado TEXT NOT NULL DEFAULT 'GENERADO',
-  modalidad_pago TEXT,
   aplica_reconexion TEXT,
   cantidad_reconexion REAL,
   marca_equipo TEXT,

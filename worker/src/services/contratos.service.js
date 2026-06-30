@@ -64,11 +64,11 @@ export async function generarContratoParaInstalacion(env, options) {
   const result = await env.DB.prepare(
     `INSERT INTO contratos (
        numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
-       r2_key, content_type, estado, modalidad_pago, aplica_reconexion,
+       r2_key, content_type, estado, aplica_reconexion,
        cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
        costo_instalacion, vigencia_contrato, nombre_instalador,
        generado_por_usuario_id, fecha_generado
-     ) VALUES (?, ?, ?, ?, ?, ?, 'GENERADO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+     ) VALUES (?, ?, ?, ?, ?, ?, 'GENERADO', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
   ).bind(
     numeroContrato,
     clienteId,
@@ -76,7 +76,6 @@ export async function generarContratoParaInstalacion(env, options) {
     instalacionId,
     r2Key,
     PDF_CONTENT_TYPE,
-    data.contrato_modalidad_pago || 'SIN DEFINIR',
     data.contrato_aplica_reconexion || 'SI',
     Number(data.contrato_cantidad_reconexion ?? 350),
     data.contrato_marca_equipo || 'HUAWEI',
@@ -129,7 +128,7 @@ export async function listContratosCliente(request, env, clienteId) {
 
   const { results } = await env.DB.prepare(
     `SELECT id, numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
-            r2_key, content_type, estado, modalidad_pago, aplica_reconexion,
+            r2_key, content_type, estado, aplica_reconexion,
             cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
             costo_instalacion, vigencia_contrato, nombre_instalador, fecha_generado
      FROM contratos
@@ -185,7 +184,7 @@ export async function descargarContrato(request, env, contratoId) {
 async function getContratoById(env, contratoId) {
   return env.DB.prepare(
     `SELECT id, numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
-            r2_key, content_type, estado, modalidad_pago, aplica_reconexion,
+            r2_key, content_type, estado, aplica_reconexion,
             cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
             costo_instalacion, vigencia_contrato, nombre_instalador,
             generado_por_usuario_id, fecha_generado
@@ -216,7 +215,6 @@ async function getContratoData(env, instalacionId, clienteId, servicioFibraId) {
        instalaciones_fibra.contrato_cantidad_reconexion,
        instalaciones_fibra.contrato_costo_equipo_penalidad,
        instalaciones_fibra.contrato_costo_instalacion,
-       instalaciones_fibra.contrato_modalidad_pago,
        clientes.id AS cliente_id,
        clientes.numero_cliente,
        clientes.nombres AS cliente_nombres,
@@ -413,7 +411,6 @@ async function buildContratoPdf(data) {
 
   page1.drawText('MODALIDAD DE PAGO:', { x: 316, y: 528, size: 8.5, font: bold, color: black })
   page1.drawLine({ start: { x: 435, y: 527 }, end: { x: 535, y: 527 }, color: black, thickness: 0.5 })
-  page1.drawText(safeText(data.contrato_modalidad_pago || 'SIN DEFINIR'), { x: 440, y: 529, size: 9, font: regular, color: black })
 
   // 4. Vigencia Row
   page1.drawText('VIGENCIA DEL CONTRATO:', { x: 36, y: 492, size: 8.5, font: bold, color: black })
@@ -487,12 +484,12 @@ async function buildContratoPdf(data) {
   // 7. Signatures Area
   page1.drawLine({ start: { x: 60, y: 298 }, end: { x: 240, y: 298 }, color: black, thickness: 0.8 })
   page1.drawText('FIRMA CLIENTE', { x: 110, y: 286, size: 8, font: bold, color: black })
-  await drawSignaturePdfLib(pdfDoc, page1, data.firma_cliente_base64, 70, 300, 160, 50)
+  await drawSignaturePdfLib(pdfDoc, page1, data.firma_cliente_base64, 70, 300, 160, 50, 'firma cliente')
 
   page1.drawLine({ start: { x: 372, y: 298 }, end: { x: 552, y: 298 }, color: black, thickness: 0.8 })
   const techLabel = `FIRMA TÉCNICO: ${data.nombre_instalador || 'TECNICO WIFIMEX'}`
   page1.drawText(safeText(techLabel), { x: 372, y: 286, size: 8, font: bold, color: black })
-  await drawSignaturePdfLib(pdfDoc, page1, data.firma_tecnico_base64, 382, 300, 160, 50)
+  await drawSignaturePdfLib(pdfDoc, page1, data.firma_tecnico_base64, 382, 300, 160, 50, 'firma tecnico')
 
   // 8. Materials Section
   drawMaterialRow(page1, 36, 238, 'FIBRA ÓPTICA', data.fibra_optica_metros)
@@ -625,9 +622,12 @@ async function buildContratoPdf(data) {
 }
 
 // Helpers for buildContratoPdf
-async function drawSignaturePdfLib(pdfDoc, page, dataUrl, x, y, width, height) {
+async function drawSignaturePdfLib(pdfDoc, page, dataUrl, x, y, width, height, label = 'firma') {
   const imageInfo = parseImageDataUrl(dataUrl)
-  if (!imageInfo) return
+  if (!imageInfo) {
+    console.warn(`No se pudo insertar ${label} en contrato: imagen vacia o formato no reconocido.`)
+    return false
+  }
 
   try {
     const image = imageInfo.mime === 'image/png'
@@ -640,8 +640,10 @@ async function drawSignaturePdfLib(pdfDoc, page, dataUrl, x, y, width, height) {
       width: scaled.width,
       height: scaled.height,
     })
+    return true
   } catch (err) {
-    console.error('Error drawing signature:', err)
+    console.warn(`No se pudo insertar ${label} en contrato: error al embeber imagen.`, err)
+    return false
   }
 }
 
@@ -704,12 +706,23 @@ function drawTextColumn(page, text, x, y, width, font, size, lineGap = 1.3) {
 }
 
 function parseImageDataUrl(value) {
-  const match = String(value ?? '').match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/)
-  if (!match) return null
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+  const match = raw.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/)
+  const mime = match ? match[1] : detectBase64ImageMime(raw)
+  const base64 = match ? match[2] : raw
+  if (!mime || !base64) return null
   return {
-    mime: match[1] === 'image/jpg' ? 'image/jpeg' : match[1],
-    bytes: base64ToBytes(match[2]),
+    mime: mime === 'image/jpg' ? 'image/jpeg' : mime,
+    bytes: base64ToBytes(base64),
   }
+}
+
+function detectBase64ImageMime(base64) {
+  const clean = String(base64 || '').slice(0, 20)
+  if (clean.startsWith('iVBOR')) return 'image/png'
+  if (clean.startsWith('/9j/')) return 'image/jpeg'
+  return null
 }
 
 function base64ToBytes(base64) {

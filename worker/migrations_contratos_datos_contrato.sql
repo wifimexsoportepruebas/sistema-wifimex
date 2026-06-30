@@ -1,4 +1,3 @@
-ALTER TABLE contratos ADD COLUMN modalidad_pago TEXT;
 ALTER TABLE contratos ADD COLUMN aplica_reconexion TEXT;
 ALTER TABLE contratos ADD COLUMN cantidad_reconexion REAL;
 ALTER TABLE contratos ADD COLUMN marca_equipo TEXT;
