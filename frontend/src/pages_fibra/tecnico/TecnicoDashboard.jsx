@@ -712,34 +712,34 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
 
             <section className="installation-form-section">
               <h3>Datos del servicio</h3>
-            <div className="installation-form-grid">
-              <label className="installation-package-field">
-                Paquete final solicitado
-                <select
-                  value={installationForm.paquete_instalacion_id}
-                  onChange={(event) => updateInstallationForm('paquete_instalacion_id', event.target.value)}
-                  required
-                >
-                  <option value="">Selecciona paquete</option>
-                  {installationPackages.map((paquete) => (
-                    <option value={paquete.id} key={paquete.id}>
-                      {paquete.nombre} - {formatCurrency(paquete.precio_mensual)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="installation-package-field">
-                Alfanumerico del equipo
-                <input
-                  type="text"
-                  value={installationForm.alfanumerico_equipo}
-                  onChange={(event) => updateInstallationForm('alfanumerico_equipo', event.target.value.replace(/\s+/g, ''))}
-                  placeholder="HWTC4B8F8AB6"
-                  autoCapitalize="characters"
-                  required
-                />
-              </label>
-            </div>
+              <div className="installation-form-grid">
+                <label className="installation-package-field">
+                  Paquete final solicitado
+                  <select
+                    value={installationForm.paquete_instalacion_id}
+                    onChange={(event) => updateInstallationForm('paquete_instalacion_id', event.target.value)}
+                    required
+                  >
+                    <option value="">Selecciona paquete</option>
+                    {installationPackages.map((paquete) => (
+                      <option value={paquete.id} key={paquete.id}>
+                        {paquete.nombre} - {formatCurrency(paquete.precio_mensual)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="installation-package-field">
+                  Alfanumerico del equipo
+                  <input
+                    type="text"
+                    value={installationForm.alfanumerico_equipo}
+                    onChange={(event) => updateInstallationForm('alfanumerico_equipo', event.target.value.replace(/\s+/g, ''))}
+                    placeholder="HWTC4B8F8AB6"
+                    autoCapitalize="characters"
+                    required
+                  />
+                </label>
+              </div>
             </section>
 
             <section className="installation-form-section">
@@ -769,7 +769,7 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                 <NumberField label="Costo de instalacion" value={installationForm.contrato_costo_instalacion} onChange={(value) => updateInstallationForm('contrato_costo_instalacion', value)} step="0.01" />
                 {requiresContractVigencia && (
                   <label>
-                    Vigencia del contrato
+                    Tipo de contrato
                     <select value={installationForm.contrato_vigencia} onChange={(event) => updateInstallationForm('contrato_vigencia', event.target.value)} required>
                       <option value="">Selecciona vigencia</option>
                       {CONTRATO_VIGENCIAS_ESPECIALES.map((vigencia) => (
@@ -796,40 +796,40 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
                   ? 'Obteniendo ubicacion para sugerir cajas cercanas...'
                   : locationMessage || 'Tu ubicacion solo se usa para mostrar cajas cercanas y no se guarda.'}
               </p>
-            <div className="installation-form-grid">
-              <div className="installation-box-picker">
-                <span>Caja</span>
-                <button type="button" className="box-picker-trigger" onClick={() => setBoxSelectorOpen(true)}>
-                  {selectedInstallationCaja ? (
-                    <>
-                      <strong>{formatCajaTitle(selectedInstallationCaja)}</strong>
-                      <small>{formatCajaOption(selectedInstallationCaja)}</small>
-                    </>
-                  ) : (
-                    <>
-                      <strong>Seleccionar caja</strong>
-                      <small>{technicianLocation ? 'Ordenadas por cercania' : 'Seleccion manual por codigo'}</small>
-                    </>
-                  )}
-                </button>
+              <div className="installation-form-grid">
+                <div className="installation-box-picker">
+                  <span>Caja</span>
+                  <button type="button" className="box-picker-trigger" onClick={() => setBoxSelectorOpen(true)}>
+                    {selectedInstallationCaja ? (
+                      <>
+                        <strong>{formatCajaTitle(selectedInstallationCaja)}</strong>
+                        <small>{formatCajaOption(selectedInstallationCaja)}</small>
+                      </>
+                    ) : (
+                      <>
+                        <strong>Seleccionar caja</strong>
+                        <small>{technicianLocation ? 'Ordenadas por cercania' : 'Seleccion manual por codigo'}</small>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <label>
+                  Terminal
+                  <select
+                    value={installationForm.caja_terminal_id}
+                    onChange={(event) => updateInstallationForm('caja_terminal_id', event.target.value)}
+                    disabled={!installationForm.caja_id}
+                    required
+                  >
+                    <option value="">{installationForm.caja_id ? 'Selecciona terminal' : 'Primero selecciona caja'}</option>
+                    {installationTerminales.map((terminal) => (
+                      <option value={terminal.id} key={terminal.id}>
+                        Terminal {terminal.numero_terminal}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <label>
-                Terminal
-                <select
-                  value={installationForm.caja_terminal_id}
-                  onChange={(event) => updateInstallationForm('caja_terminal_id', event.target.value)}
-                  disabled={!installationForm.caja_id}
-                  required
-                >
-                  <option value="">{installationForm.caja_id ? 'Selecciona terminal' : 'Primero selecciona caja'}</option>
-                  {installationTerminales.map((terminal) => (
-                    <option value={terminal.id} key={terminal.id}>
-                      Terminal {terminal.numero_terminal}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
             </section>
 
             {boxSelectorOpen && (
@@ -891,30 +891,30 @@ function TecnicoDashboard({ apiUrl, token, usuario }) {
             <section className="installation-form-section">
               <h3>Datos tecnicos</h3>
               <div className="installation-form-grid">
-              <NumberField label="Fibra optica usada (m)" value={installationForm.fibra_optica_metros} onChange={(value) => updateInstallationForm('fibra_optica_metros', value)} step="0.01" />
-              <NumberField label="Tensor gancho" value={installationForm.tensor_gancho} onChange={(value) => updateInstallationForm('tensor_gancho', value)} />
-              <NumberField label="Argollas" value={installationForm.argollas} onChange={(value) => updateInstallationForm('argollas', value)} />
-              <NumberField label="Taquetes" value={installationForm.taquetes} onChange={(value) => updateInstallationForm('taquetes', value)} />
-              <NumberField label="Sujetadores" value={installationForm.sujetadores} onChange={(value) => updateInstallationForm('sujetadores', value)} />
-              <NumberField label="Roseta" value={installationForm.roseta} onChange={(value) => updateInstallationForm('roseta', value)} />
+                <NumberField label="Fibra optica usada (m)" value={installationForm.fibra_optica_metros} onChange={(value) => updateInstallationForm('fibra_optica_metros', value)} step="0.01" />
+                <NumberField label="Tensor gancho" value={installationForm.tensor_gancho} onChange={(value) => updateInstallationForm('tensor_gancho', value)} />
+                <NumberField label="Argollas" value={installationForm.argollas} onChange={(value) => updateInstallationForm('argollas', value)} />
+                <NumberField label="Taquetes" value={installationForm.taquetes} onChange={(value) => updateInstallationForm('taquetes', value)} />
+                <NumberField label="Sujetadores" value={installationForm.sujetadores} onChange={(value) => updateInstallationForm('sujetadores', value)} />
+                <NumberField label="Roseta" value={installationForm.roseta} onChange={(value) => updateInstallationForm('roseta', value)} />
 
-              <label>
-                Potencia
-                <input
-                  type="number"
-                  min="-30"
-                  max="-12"
-                  step="0.01"
-                  value={installationForm.potencia}
-                  onChange={(event) => updateInstallationForm('potencia', event.target.value)}
-                  placeholder="-18.34"
-                  required
-                />
-                {Number(installationForm.potencia) <= -26 && (
-                  <small className="installation-warning">Potencia baja, revisa la instalacion antes de enviar.</small>
-                )}
-              </label>
-            </div>
+                <label>
+                  Potencia
+                  <input
+                    type="number"
+                    min="-30"
+                    max="-12"
+                    step="0.01"
+                    value={installationForm.potencia}
+                    onChange={(event) => updateInstallationForm('potencia', event.target.value)}
+                    placeholder="-18.34"
+                    required
+                  />
+                  {Number(installationForm.potencia) <= -26 && (
+                    <small className="installation-warning">Potencia baja, revisa la instalacion antes de enviar.</small>
+                  )}
+                </label>
+              </div>
             </section>
 
             <section className="signature-section">
@@ -1135,7 +1135,7 @@ function SignaturePad({ onChange, clearSignal, initialValue }) {
     event.preventDefault()
     drawingRef.current = false
     canvasRef.current.releasePointerCapture?.(event.pointerId)
-    
+
     try {
       const canvas = canvasRef.current
       const tempCanvas = document.createElement('canvas')

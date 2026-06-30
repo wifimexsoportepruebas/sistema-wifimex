@@ -4,7 +4,7 @@ import { json } from '../utils/response.js'
 import { LOGO_BASE64 } from '../utils/logo.js'
 
 const CONTRATO_ESTADO_GENERADO = 'GENERADO'
-const CONTRATO_COUNTER_KEY = 'contador-contratos'
+const CONTRATO_COUNTER_KEY = 'total_contratos'
 const PDF_CONTENT_TYPE = 'application/pdf'
 const COMUNIDADES_VIGENCIA_ESPECIAL = ['PALAPA', 'COEXCONTLAN', 'ATETETLA']
 const CONTRATO_VIGENCIAS_ESPECIALES = ['MINIMO 6 MESES', 'INSTALACION DE 1500']
@@ -46,7 +46,7 @@ export async function generarContratoParaInstalacion(env, options) {
   const data = await getContratoData(env, instalacionId, clienteId, servicioFibraId)
   if (!data) throw new Error('No se encontraron datos completos para generar el contrato.')
 
-  const numeroContrato = await generarNumeroContrato(env)
+  const numeroContrato = await calcularSiguienteNumeroContrato(env)
   const vigenciaContrato = getVigenciaContrato(data.comunidad_nombre, data.contrato_vigencia)
   const nombreInstalador = getNombreInstalador(data)
   const clienteSlug = slugPath([data.cliente_nombres, data.cliente_apellido_paterno, data.cliente_apellido_materno].filter(Boolean).join(' '))
@@ -85,6 +85,8 @@ export async function generarContratoParaInstalacion(env, options) {
     nombreInstalador,
     usuarioId ?? null
   ).run()
+
+  await actualizarTotalContratos(env, numeroContrato)
 
   return {
     id: result.meta?.last_row_id,
@@ -252,14 +254,18 @@ async function getContratoData(env, instalacionId, clienteId, servicioFibraId) {
   ).bind(clienteId, servicioFibraId, instalacionId).first()
 }
 
-async function generarNumeroContrato(env) {
+async function calcularSiguienteNumeroContrato(env) {
   if (!env.CONTRATOS_KV) throw new Error('Falta configurar CONTRATOS_KV.')
 
   const currentValue = await env.CONTRATOS_KV.get(CONTRATO_COUNTER_KEY)
-  const current = Number.parseInt(currentValue || '0', 10)
-  const next = Number.isFinite(current) ? current + 1 : 1
-  await env.CONTRATOS_KV.put(CONTRATO_COUNTER_KEY, String(next))
-  return `CON-${new Date().getFullYear()}-${String(next).padStart(6, '0')}`
+  const totalContratos = Number.parseInt(currentValue || '0', 10)
+  const siguiente = (Number.isFinite(totalContratos) && totalContratos >= 0 ? totalContratos : 0) + 1
+  return String(siguiente)
+}
+
+async function actualizarTotalContratos(env, numeroContrato) {
+  if (!env.CONTRATOS_KV) throw new Error('Falta configurar CONTRATOS_KV.')
+  await env.CONTRATOS_KV.put(CONTRATO_COUNTER_KEY, String(numeroContrato))
 }
 
 async function buildContratoPdf(data) {
@@ -412,17 +418,25 @@ async function buildContratoPdf(data) {
   page1.drawText('MODALIDAD DE PAGO:', { x: 316, y: 528, size: 8.5, font: bold, color: black })
   page1.drawLine({ start: { x: 435, y: 527 }, end: { x: 535, y: 527 }, color: black, thickness: 0.5 })
 
-  // 4. Vigencia Row
-  page1.drawText('VIGENCIA DEL CONTRATO:', { x: 36, y: 492, size: 8.5, font: bold, color: black })
-  page1.drawText(safeText(data.vigencia_contrato || CONTRATO_VIGENCIA_NORMAL), { x: 165, y: 492, size: 8, font: bold, color: redText })
+  // 4. Vigencia / Reconexion Row
+  page1.drawRectangle({
+    x: 36,
+    y: 484,
+    width: 540,
+    height: 28,
+    borderColor: black,
+    borderWidth: 0.8
+  })
+  page1.drawText('VIGENCIA DEL CONTRATO:', { x: 46, y: 501, size: 7.8, font: bold, color: black })
+  page1.drawText(safeText(data.vigencia_contrato || CONTRATO_VIGENCIA_NORMAL), { x: 168, y: 501, size: 7.8, font: bold, color: redText })
 
-  page1.drawText('APLICA TARIFA POR RECONEXION:', { x: 36, y: 472, size: 8.5, font: bold, color: black })
-  page1.drawLine({ start: { x: 202, y: 471 }, end: { x: 240, y: 471 }, color: black, thickness: 0.5 })
-  page1.drawText(safeText(data.contrato_aplica_reconexion || 'SI'), { x: 214, y: 473, size: 8.5, font: bold, color: black })
+  page1.drawText('APLICA TARIFA POR RECONEXION:', { x: 46, y: 489, size: 7.8, font: bold, color: black })
+  page1.drawLine({ start: { x: 200, y: 488 }, end: { x: 238, y: 488 }, color: black, thickness: 0.5 })
+  page1.drawText(safeText(data.contrato_aplica_reconexion || 'SI'), { x: 212, y: 490, size: 7.8, font: bold, color: black })
 
-  page1.drawText('CANTIDAD:', { x: 316, y: 472, size: 8.5, font: bold, color: black })
-  page1.drawLine({ start: { x: 372, y: 471 }, end: { x: 475, y: 471 }, color: black, thickness: 0.5 })
-  page1.drawText(formatCurrency(data.contrato_cantidad_reconexion ?? 350), { x: 382, y: 473, size: 8.5, font: bold, color: black })
+  page1.drawText('CANTIDAD:', { x: 326, y: 489, size: 7.8, font: bold, color: black })
+  page1.drawLine({ start: { x: 382, y: 488 }, end: { x: 492, y: 488 }, color: black, thickness: 0.5 })
+  page1.drawText(formatCurrency(data.contrato_cantidad_reconexion ?? 350), { x: 392, y: 490, size: 7.8, font: bold, color: black })
 
   // 5. Equipment and Installation Box
   page1.drawRectangle({
