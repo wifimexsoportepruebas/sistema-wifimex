@@ -21,6 +21,14 @@ const menuItems = [
     ],
   },
   {
+    label: 'Infraestructura',
+    icon: 'IF',
+    roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
+    submenu: [
+      { label: 'Cajas de fibra', view: 'infraestructura-cajas', icon: 'CF' },
+    ],
+  },
+  {
     label: 'Ruta operativa',
     icon: 'RO',
     view: 'reportes-operativos',
@@ -32,21 +40,14 @@ const menuItems = [
     view: 'bitacora-tecnicos',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
   },
-  {
-    label: 'Infraestructura',
-    icon: 'IF',
-    roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
-    submenu: [
-      { label: 'Cajas de fibra', view: 'infraestructura-cajas', icon: 'CF' },
-    ],
-  },
+
   {
     label: 'Empleados',
     icon: 'EM',
     view: 'empleados',
     roles: ['ADMIN'],
   },
-  { label: 'Cajas cercanas', icon: 'CC', view: 'cajas-cercanas', roles: ['TECNICO', 'TECNICO_FIBRA', 'ADMIN'] },
+  { label: 'Cajas cercanas', icon: 'CC', view: 'cajas-cercanas', roles: ['TECNICO', 'TECNICO_FIBRA'] },
   { label: 'Mis Tareas', icon: 'MA', view: 'tecnico', roles: ['TECNICO', 'TECNICO_FIBRA'] },
 ]
 
