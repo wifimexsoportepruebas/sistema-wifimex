@@ -80,6 +80,7 @@ export async function listClientes(request, env, url) {
        clientes.direccion,
        clientes.referencia,
        clientes.estado_cliente,
+       clientes.qr_token,
        comunidades.prefijo AS comunidad_prefijo,
        comunidades.nombre AS comunidad_nombre,
        servicios_fibra.id AS servicio_id,
@@ -606,4 +607,3 @@ function getShortHash(str) {
   }
   return Math.abs(hash).toString(36).substring(0, 6).toUpperCase()
 }
-

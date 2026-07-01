@@ -8,6 +8,7 @@ import {
   getContratosSugeridos,
   vincularContratoExistente,
   cambiarVinculoContrato,
+  verContratoR2,
 } from '../services/contratos.service.js'
 
 export async function handleContratosRoutes(request, env, url) {
@@ -21,6 +22,10 @@ export async function handleContratosRoutes(request, env, url) {
 
   if (request.method === 'GET' && url.pathname === '/api/contratos/r2/sugerencias') {
     return getContratosSugeridos(request, env, url)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/contratos/r2/ver') {
+    return verContratoR2(request, env)
   }
 
   if (request.method === 'POST' && url.pathname === '/api/contratos/vincular-existente') {

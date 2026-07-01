@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Swal from 'sweetalert2'
+import '../../styles/ClientesAlta.css'
 
 const initialForm = {
   comunidad_id: '',

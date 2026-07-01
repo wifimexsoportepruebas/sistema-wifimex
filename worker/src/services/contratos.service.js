@@ -183,6 +183,31 @@ export async function descargarContrato(request, env, contratoId) {
   })
 }
 
+export async function verContratoR2(request, env) {
+  const auth = await requireAuth(request, env, ['ADMIN', 'ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'])
+  if (auth.response) return auth.response
+  if (!env.CONTRATOS_BUCKET) return json({ ok: false, error: 'Falta configurar CONTRATOS_BUCKET.' }, 500)
+
+  const body = await request.json().catch(() => null)
+  const r2Key = String(body?.r2_key || '').trim()
+  if (!r2Key) return json({ ok: false, error: 'r2_key es obligatorio.' }, 400)
+  if (!r2Key.toLowerCase().endsWith('.pdf')) return json({ ok: false, error: 'El archivo debe ser un PDF.' }, 400)
+  if (r2Key.includes('..') || r2Key.startsWith('/') || r2Key.startsWith('\\')) {
+    return json({ ok: false, error: 'Ruta de archivo invalida.' }, 400)
+  }
+
+  const object = await env.CONTRATOS_BUCKET.get(r2Key)
+  if (!object) return json({ ok: false, error: 'El archivo del contrato no existe en R2.' }, 404)
+
+  const filename = r2Key.substring(r2Key.lastIndexOf('/') + 1) || 'contrato.pdf'
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': PDF_CONTENT_TYPE,
+      'Content-Disposition': `inline; filename="${filename.replace(/"/g, '')}"`,
+    },
+  })
+}
+
 function getShortHash(str) {
   let hash = 0
   for (let i = 0; i < str.length; i++) {

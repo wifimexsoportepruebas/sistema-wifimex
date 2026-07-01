@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import QRCode from 'qrcode'
 import Swal from 'sweetalert2'
+import '../../styles/ClientesLista.css'
 
 const SPEED_OPTIONS = [10, 20, 30]
 const PAGE_LIMIT = 20
@@ -23,6 +25,9 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
   const [selectedContract, setSelectedContract] = useState(null)
   const [customNumeroContrato, setCustomNumeroContrato] = useState('')
   const [isChangeMode, setIsChangeMode] = useState(false)
+  const [selectedQrCliente, setSelectedQrCliente] = useState(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
 
@@ -74,6 +79,44 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
   useEffect(() => {
     loadClientes()
   }, [loadClientes])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function generateQr() {
+      if (!selectedQrCliente?.qr_token) {
+        setQrDataUrl('')
+        return
+      }
+
+      setQrLoading(true)
+      try {
+        const dataUrl = await QRCode.toDataURL(buildQrUrl(selectedQrCliente), {
+          width: 360,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: {
+            dark: '#0f172a',
+            light: '#ffffff',
+          },
+        })
+        if (!cancelled) setQrDataUrl(dataUrl)
+      } catch (err) {
+        if (!cancelled) {
+          setQrDataUrl('')
+          Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo generar el QR.', confirmButtonColor: '#4274D9' })
+        }
+      } finally {
+        if (!cancelled) setQrLoading(false)
+      }
+    }
+
+    generateQr()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedQrCliente])
 
   function handleSearch(event) {
     event.preventDefault()
@@ -244,6 +287,51 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
     }
   }
 
+  const handleVerContratoR2 = async (r2Key) => {
+    try {
+      const response = await fetch(`${apiUrl}/api/contratos/r2/ver`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ r2_key: r2Key }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error ?? 'No se pudo abrir el PDF.')
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#4274D9' })
+    }
+  }
+
+  const handleDownloadQr = async () => {
+    if (!selectedQrCliente?.qr_token) return
+
+    try {
+      const qrUrl = qrDataUrl || await QRCode.toDataURL(buildQrUrl(selectedQrCliente), {
+        width: 420,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+      })
+      const imageUrl = await buildQrDownloadImage(selectedQrCliente, qrUrl)
+      const link = document.createElement('a')
+      link.href = imageUrl
+      link.download = buildQrFileName(selectedQrCliente)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(imageUrl)
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message || 'No se pudo guardar el QR.', confirmButtonColor: '#4274D9' })
+    }
+  }
+
   const totalPages = Math.max(Number(pagination.total_pages ?? 1), 1)
 
   return (
@@ -291,7 +379,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
           <span>Ordenados de menor a mayor por localidad y numero de cliente.</span>
         </div>
 
-        <div className="fiber-table-wrap">
+        <div className="fiber-table-wrap clientes-table-scroll">
           <table className="fiber-table client-table">
             <thead>
               <tr>
@@ -302,18 +390,19 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                 <th>Cobro</th>
                 <th>Equipo</th>
                 <th>Estado</th>
+                <th>QR</th>
                 <th>Contrato</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="8" className="table-empty">Cargando clientes...</td>
+                  <td colSpan="9" className="table-empty">Cargando clientes...</td>
                 </tr>
               )}
               {!loading && clientes.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="table-empty">No hay clientes para mostrar.</td>
+                  <td colSpan="9" className="table-empty">No hay clientes para mostrar.</td>
                 </tr>
               )}
               {!loading && clientes.map((cliente) => (
@@ -350,12 +439,24 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                     <span className="status-pill">{cliente.estado_servicio || cliente.estado_cliente || 'ACTIVO'}</span>
                   </td>
                   <td>
+                    {cliente.qr_token ? (
+                      <button
+                        type="button"
+                        className="client-qr-button"
+                        onClick={() => setSelectedQrCliente(cliente)}
+                      >
+                        Ver QR
+                      </button>
+                    ) : (
+                      <span className="client-no-qr">Sin QR</span>
+                    )}
+                  </td>
+                  <td>
                     {cliente.contrato_id ? (
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div className="client-contract-actions">
                         <button
                           type="button"
                           className="fiber-link-button"
-                          style={{ fontWeight: 'bold' }}
                           onClick={() => handleVerContrato(cliente.contrato_id)}
                         >
                           Ver contrato
@@ -364,7 +465,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                           <button
                             type="button"
                             className="fiber-link-button"
-                            style={{ color: '#d97706', fontSize: '0.85rem' }}
+                            data-tone="warning"
                             onClick={() => handleOpenVincularModal(cliente, true)}
                           >
                             Cambiar contrato
@@ -390,6 +491,21 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
           </table>
         </div>
 
+        <div className="clientes-mobile-list">
+          {loading && <div className="clientes-mobile-empty">Cargando clientes...</div>}
+          {!loading && clientes.length === 0 && <div className="clientes-mobile-empty">No hay clientes para mostrar.</div>}
+          {!loading && clientes.map((cliente) => (
+            <ClienteMobileCard
+              key={cliente.id}
+              cliente={cliente}
+              canManageContracts={canManageContracts}
+              onQr={() => setSelectedQrCliente(cliente)}
+              onVerContrato={handleVerContrato}
+              onVincular={handleOpenVincularModal}
+            />
+          ))}
+        </div>
+
         {totalPages > 1 && (
           <div className="fiber-pagination">
             <button type="button" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={page <= 1 || loading}>
@@ -405,7 +521,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
 
       {isModalOpen && selectedCliente && (
         <div className="client-modal-backdrop" onClick={() => setIsModalOpen(false)}>
-          <div className="client-modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', maxHeight: '90vh' }}>
+          <div className="client-modal client-contract-modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', maxHeight: '90vh' }}>
             <div className="client-modal-header">
               <h3>{isChangeMode ? 'Cambiar contrato vinculado' : 'Vincular Contrato Existente'}</h3>
               <button type="button" onClick={() => setIsModalOpen(false)}>✕</button>
@@ -451,7 +567,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
               style={{ margin: '16px 24px 12px' }}
             />
 
-            <div className="client-results" style={{ padding: '0 24px 16px', maxHeight: '300px', overflowY: 'auto' }}>
+            <div className="client-results client-contract-results" style={{ padding: '0 24px 16px', maxHeight: '300px', overflowY: 'auto' }}>
               {loadingSuggestions ? (
                 <p style={{ textAlign: 'center' }}>Cargando sugerencias de R2...</p>
               ) : suggestedContracts.length === 0 ? (
@@ -495,6 +611,18 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                           Número detectado: {item.numero_detectado}
                         </span>
                       )}
+                      <div className="client-contract-suggestion-actions" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" className="btn-ver-pdf-contrato" onClick={() => handleVerContratoR2(item.r2_key)}>
+                          Ver PDF
+                        </button>
+                        <button type="button" className="btn-vincular-contrato" onClick={() => handleSelectContract(item)}>
+                          {selectedContract?.r2_key === item.r2_key
+                            ? 'Seleccionado'
+                            : isChangeMode
+                              ? 'Cambiar a este'
+                              : 'Vincular'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -534,7 +662,94 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
           </div>
         </div>
       )}
+
+      {selectedQrCliente && (
+        <div className="client-modal-backdrop" onClick={() => setSelectedQrCliente(null)}>
+          <div className="client-modal client-qr-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="client-modal-header">
+              <h3>QR del cliente</h3>
+              <button type="button" onClick={() => setSelectedQrCliente(null)}>x</button>
+            </div>
+
+            <div className="client-qr-content">
+              <div className="client-qr-preview">
+                {qrLoading ? (
+                  <div className="client-qr-loading">Generando QR...</div>
+                ) : (
+                  qrDataUrl && <img src={qrDataUrl} alt={`QR de ${fullName(selectedQrCliente) || selectedQrCliente.numero_cliente}`} />
+                )}
+              </div>
+
+              <div className="client-qr-info">
+                <h4>{fullName(selectedQrCliente) || 'Cliente sin nombre'}</h4>
+                <p><strong>Cliente:</strong> {selectedQrCliente.numero_cliente || 'Sin numero'}</p>
+                <p><strong>Comunidad:</strong> {selectedQrCliente.comunidad_nombre || 'Sin comunidad'}</p>
+                <p><strong>Paquete:</strong> {selectedQrCliente.paquete_nombre || 'Sin paquete'}</p>
+                <p><strong>Precio:</strong> {money(selectedQrCliente.precio_mensual)}</p>
+                <p><strong>Corte:</strong> {selectedQrCliente.ciclo_corte_nombre || 'Sin ciclo'}</p>
+                <small>{selectedQrCliente.qr_token}</small>
+              </div>
+
+              <div className="client-qr-actions">
+                <button type="button" className="fiber-primary-button" onClick={handleDownloadQr} disabled={qrLoading || !qrDataUrl}>
+                  Guardar como imagen
+                </button>
+                <button type="button" className="fiber-secondary-button" onClick={() => setSelectedQrCliente(null)}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ClienteMobileCard({ cliente, canManageContracts, onQr, onVerContrato, onVincular }) {
+  return (
+    <article className="cliente-mobile-card">
+      <header>
+        <div>
+          <strong>{fullName(cliente) || 'Sin nombre'}</strong>
+          <span>Cliente: {cliente.numero_cliente || 'Sin numero'}</span>
+        </div>
+        <span className="status-pill">{cliente.estado_servicio || cliente.estado_cliente || 'ACTIVO'}</span>
+      </header>
+
+      <div className="cliente-mobile-main">
+        <p>{cliente.comunidad_nombre || 'Sin comunidad'} · {cliente.paquete_nombre || 'Sin paquete'}</p>
+        <p>Precio: {money(cliente.precio_mensual)} · Corte: {cliente.ciclo_corte_nombre || 'Sin ciclo'}</p>
+        <p>Equipo: {cliente.alfanumerico_equipo || 'Sin alfanumerico'}</p>
+      </div>
+
+      <footer>
+        {cliente.qr_token ? (
+          <button type="button" className="client-qr-button" onClick={onQr}>QR</button>
+        ) : (
+          <span className="client-no-qr">Sin QR</span>
+        )}
+
+        {cliente.contrato_id ? (
+          <>
+            <button type="button" className="fiber-secondary-button" onClick={() => onVerContrato(cliente.contrato_id)}>
+              Ver contrato
+            </button>
+            {canManageContracts && (
+              <button type="button" className="fiber-link-button" data-tone="warning" onClick={() => onVincular(cliente, true)}>
+                Cambiar
+              </button>
+            )}
+          </>
+        ) : (
+          canManageContracts && (
+            <button type="button" className="fiber-primary-button" onClick={() => onVincular(cliente, false)}>
+              Vincular
+            </button>
+          )
+        )}
+      </footer>
+    </article>
   )
 }
 
@@ -546,6 +761,132 @@ function money(value) {
   const amount = Number(value)
   if (!Number.isFinite(amount)) return '$0.00'
   return amount.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+}
+
+function buildQrUrl(cliente) {
+  const base = window.location.origin
+  return `${base}/qr-cliente/${cliente.qr_token}`
+}
+
+async function buildQrDownloadImage(cliente, qrDataUrl) {
+  const canvas = document.createElement('canvas')
+  const width = 800
+  const height = 1000
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No se pudo preparar la imagen.')
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.fillStyle = '#0f172a'
+  ctx.textAlign = 'center'
+  ctx.font = '800 54px Montserrat, Arial, sans-serif'
+  ctx.fillText('WiFiMex', width / 2, 96)
+
+  ctx.fillStyle = '#4274D9'
+  ctx.font = '700 24px Montserrat, Arial, sans-serif'
+  ctx.fillText('Fibra Central', width / 2, 132)
+
+  const qrImage = await loadImage(qrDataUrl)
+  ctx.drawImage(qrImage, 220, 178, 360, 360)
+
+  const nombre = fullName(cliente) || 'Cliente sin nombre'
+  ctx.fillStyle = '#0f172a'
+  ctx.font = '800 34px Montserrat, Arial, sans-serif'
+  drawCenteredWrappedText(ctx, nombre, width / 2, 596, 680, 40)
+
+  const details = [
+    ['Cliente', cliente.numero_cliente || 'Sin numero'],
+    ['Comunidad', cliente.comunidad_nombre || 'Sin comunidad'],
+    ['Paquete', cliente.paquete_nombre || 'Sin paquete'],
+    ['Precio', money(cliente.precio_mensual)],
+    ['Corte', cliente.ciclo_corte_nombre || 'Sin ciclo'],
+  ]
+
+  ctx.textAlign = 'left'
+  let y = 700
+  for (const [label, value] of details) {
+    ctx.fillStyle = '#64748b'
+    ctx.font = '700 24px Montserrat, Arial, sans-serif'
+    ctx.fillText(`${label}:`, 120, y)
+    ctx.fillStyle = '#111827'
+    ctx.font = '700 24px Montserrat, Arial, sans-serif'
+    drawLeftWrappedText(ctx, String(value), 250, y, 430, 30)
+    y += 58
+  }
+
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = '600 15px Montserrat, Arial, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(`Referencia QR: ${cliente.qr_token}`, width / 2, 946)
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) resolve(result)
+      else reject(new Error('No se pudo crear el PNG.'))
+    }, 'image/png')
+  })
+
+  return URL.createObjectURL(blob)
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('No se pudo cargar el QR.'))
+    image.src = src
+  })
+}
+
+function drawCenteredWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+  const lines = wrapCanvasText(ctx, text, maxWidth)
+  lines.slice(0, 2).forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight)
+  })
+}
+
+function drawLeftWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+  const lines = wrapCanvasText(ctx, text, maxWidth)
+  lines.slice(0, 2).forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight)
+  })
+}
+
+function wrapCanvasText(ctx, text, maxWidth) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  const lines = []
+  let line = ''
+
+  for (const word of words) {
+    const testLine = line ? `${line} ${word}` : word
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      lines.push(line)
+      line = word
+    } else {
+      line = testLine
+    }
+  }
+
+  if (line) lines.push(line)
+  return lines.length ? lines : ['']
+}
+
+function buildQrFileName(cliente) {
+  const numero = cliente.numero_cliente ? `${cleanFilePart(cliente.numero_cliente)}_` : ''
+  const nombre = cleanFilePart(fullName(cliente) || 'CLIENTE')
+  return `QR_CLIENTE_${numero}${nombre}.png`
+}
+
+function cleanFilePart(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase()
 }
 
 export default ClientesLista

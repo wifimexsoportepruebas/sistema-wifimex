@@ -1,0 +1,156 @@
+.clientes-alta-page {
+  overflow-x: hidden;
+}
+
+.clientes-alta-page .fiber-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.client-form,
+.client-import-panel,
+.client-import-results {
+  width: 100%;
+  max-width: 100%;
+}
+
+.client-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.client-form::before,
+.client-import-panel::before {
+  display: block;
+  color: var(--fiber-primary-dark);
+  font-size: 0.86rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.client-form::before {
+  content: "Datos del cliente y servicio";
+}
+
+.client-form-grid {
+  display: grid;
+  gap: 18px 22px;
+  width: 100%;
+}
+
+.client-form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.client-form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.client-form-grid label,
+.client-import-panel label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--fiber-black);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.client-form-grid input,
+.client-form-grid select,
+.client-import-panel input,
+.client-import-panel select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  background: var(--fiber-white);
+  color: var(--fiber-text);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+}
+
+.client-form-grid input:focus,
+.client-form-grid select:focus,
+.client-import-panel input:focus,
+.client-import-panel select:focus {
+  border-color: rgba(66, 116, 217, 0.55);
+  box-shadow: 0 0 0 3px rgba(66, 116, 217, 0.14);
+  outline: none;
+}
+
+.client-form-grid small,
+.client-import-panel small {
+  color: var(--fiber-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.client-save-button {
+  align-self: flex-start;
+  min-width: 190px;
+}
+
+.client-import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.client-import-panel h2,
+.client-import-results h2 {
+  margin: 0;
+  color: var(--fiber-black);
+}
+
+@media (max-width: 980px) {
+  .client-form-grid.three,
+  .client-form-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .clientes-alta-page .fiber-page-header {
+    align-items: stretch;
+  }
+
+  .clientes-alta-page .fiber-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .client-form,
+  .client-import-panel,
+  .client-import-results {
+    padding: 16px;
+  }
+
+  .client-form-grid.three,
+  .client-form-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .client-form-grid {
+    gap: 14px;
+  }
+
+  .client-save-button,
+  .client-import-panel button[type="submit"] {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .client-import-results .comunidades-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .client-import-results [style*="grid-template-columns: repeat(2"] {
+    grid-template-columns: 1fr !important;
+  }
+}
