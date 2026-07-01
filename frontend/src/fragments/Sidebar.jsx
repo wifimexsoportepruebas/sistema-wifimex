@@ -26,8 +26,8 @@ const menuItems = [
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
     submenu: [
       { label: 'Cajas de fibra', view: 'infraestructura-cajas', icon: 'CF', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
-      { label: 'Ruta operativa', view: 'reportes-operativos', icon: 'RO', roles: ['ADMIN'] },
-      { label: 'Bitácora de técnicos', view: 'bitacora-tecnicos', icon: 'BT', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
+      { label: 'Ruta operativa', view: 'reportes-operativos', icon: 'RO', roles: ['ADMIN', 'SOPORTE'] },
+      { label: 'Bitácora de técnicos', view: 'bitacora-tecnicos', icon: 'BT', roles: ['ADMIN'] },
     ],
   },
   {
@@ -35,7 +35,7 @@ const menuItems = [
     icon: 'AD',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
     submenu: [
-      { label: 'Comunidades', view: 'comunidades', icon: 'CM', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
+      { label: 'Comunidades', view: 'comunidades', icon: 'CM', roles: ['SOPORTE', 'SOPORTE_FIBRA'] },
       { label: 'Empleados', view: 'empleados', icon: 'EM', roles: ['ADMIN'] },
       { label: 'Puntos de cobro', view: 'puntos-cobro', icon: 'PC', roles: ['ADMIN'] },
     ],
