@@ -122,6 +122,7 @@ export async function getBitacoraTecnicos(request, env, url) {
          inst.titular_apellido_materno,
          inst.titular_telefono,
          inst.titular_direccion,
+         inst.contrato_costo_instalacion,
          cajas.id AS caja_id,
          cajas.codigo_caja,
          cajas.nombre AS caja_nombre,
@@ -168,6 +169,7 @@ export async function getBitacoraTecnicos(request, env, url) {
             total_terminados: 0,
             pendientes_confirmacion: 0,
             confirmados: 0,
+            total_costo_instalacion: 0,
           },
           trabajos: [],
         })
@@ -179,6 +181,7 @@ export async function getBitacoraTecnicos(request, env, url) {
       tecnico.resumen.total_terminados += 1
       if (row.estado === 'PENDIENTE_CONFIRMACION') tecnico.resumen.pendientes_confirmacion += 1
       if (ESTADOS_CONFIRMADOS.includes(row.estado)) tecnico.resumen.confirmados += 1
+      tecnico.resumen.total_costo_instalacion += trabajo.contrato_costo_instalacion
     }
 
     if (tecnicoParam !== 'todos' && tecnicosMap.size === 0) {
@@ -191,6 +194,7 @@ export async function getBitacoraTecnicos(request, env, url) {
             total_terminados: 0,
             pendientes_confirmacion: 0,
             confirmados: 0,
+            total_costo_instalacion: 0,
           },
           trabajos: [],
         })
@@ -206,6 +210,7 @@ export async function getBitacoraTecnicos(request, env, url) {
       acc.total_terminados += tecnico.resumen.total_terminados
       acc.pendientes_confirmacion += tecnico.resumen.pendientes_confirmacion
       acc.confirmados += tecnico.resumen.confirmados
+      acc.total_costo_instalacion += tecnico.resumen.total_costo_instalacion
       if (tecnico.resumen.total_terminados > 0) acc.tecnicos_con_actividad += 1
       return acc
     }, {
@@ -213,6 +218,7 @@ export async function getBitacoraTecnicos(request, env, url) {
       pendientes_confirmacion: 0,
       confirmados: 0,
       tecnicos_con_actividad: 0,
+      total_costo_instalacion: 0,
     })
 
     return json({
@@ -291,6 +297,7 @@ function buildTrabajo(row, logs) {
   const cliente = buildNombreCliente(row)
   const telefono = row.titular_telefono || row.cliente_telefono || row.prospecto_telefono || 'N/A'
   const direccion = row.titular_direccion || row.cliente_direccion || row.prospecto_direccion || 'N/A'
+  const contratoCostoInstalacion = safeNumber(row.contrato_costo_instalacion)
 
   return {
     reporte_id: row.reporte_id,
@@ -306,6 +313,7 @@ function buildTrabajo(row, logs) {
     es_imprevista: row.origen === 'DIRECTA_TECNICO',
     contrato_id: row.contrato_id ?? null,
     contrato_numero: row.contrato_numero ?? null,
+    contrato_costo_instalacion: contratoCostoInstalacion,
     detalle: {
       reporte_id: row.reporte_id,
       tipo_reporte: row.tipo_reporte,
@@ -331,6 +339,7 @@ function buildTrabajo(row, logs) {
       potencia: row.potencia ?? null,
       alfanumerico_equipo: row.alfanumerico_equipo || 'N/A',
       paquete: row.paquete_nombre || 'N/A',
+      contrato_costo_instalacion: contratoCostoInstalacion,
       materiales: {
         fibra_optica_metros: row.fibra_optica_metros ?? 0,
         tensor_gancho: row.tensor_gancho ?? 0,
@@ -370,6 +379,11 @@ function findLogDate(logs, estado) {
 
 function findFirstConfirmacion(logs) {
   return logs.find((log) => ESTADOS_CONFIRMADOS.includes(log.estado))?.fecha || null
+}
+
+function safeNumber(value) {
+  const number = Number(value ?? 0)
+  return Number.isFinite(number) ? number : 0
 }
 
 function extractTime(dateStr) {

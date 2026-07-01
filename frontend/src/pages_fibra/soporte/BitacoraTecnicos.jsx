@@ -21,6 +21,15 @@ function formatDateTime(value) {
   return String(value).replace('T', ' ').slice(0, 19)
 }
 
+function formatCurrency(value) {
+  const number = Number(value ?? 0)
+  const safeValue = Number.isFinite(number) ? number : 0
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+  }).format(safeValue)
+}
+
 function todayInputDate() {
   const today = new Date()
   const offset = today.getTimezoneOffset()
@@ -96,6 +105,7 @@ function BitacoraTecnicos({ apiUrl, token }) {
     pendientes_confirmacion: 0,
     confirmados: 0,
     tecnicos_con_actividad: 0,
+    total_costo_instalacion: 0,
   }
   const listTecnicos = bitacoraData?.tecnicos ?? []
   const hasTrabajos = listTecnicos.some((tecnico) => (tecnico.trabajos ?? []).length > 0)
@@ -166,6 +176,7 @@ function BitacoraTecnicos({ apiUrl, token }) {
         <SummaryCard value={resumen.pendientes_confirmacion} label="Pendientes de confirmacion" tone="pending" />
         <SummaryCard value={resumen.confirmados} label="Confirmados" tone="confirmed" />
         <SummaryCard value={resumen.tecnicos_con_actividad} label="Tecnicos activos" tone="techs" />
+        <SummaryCard value={formatCurrency(resumen.total_costo_instalacion)} label="Total cobrado por instalaciones" tone="money" />
       </section>
 
       <section className="bitacora-tech-list">
@@ -230,6 +241,7 @@ function TecnicoGroup({ tecnico, onVerDetalle, onVerContrato }) {
           <span className="bitacora-tech-badge total">Total: {tecnico.resumen.total_terminados}</span>
           <span className="bitacora-tech-badge confirmacion">Pendientes: {tecnico.resumen.pendientes_confirmacion}</span>
           <span className="bitacora-tech-badge completada">Confirmados: {tecnico.resumen.confirmados}</span>
+          <span className="bitacora-tech-badge money">Cobrado: {formatCurrency(tecnico.resumen.total_costo_instalacion)}</span>
         </div>
       </div>
 
@@ -249,6 +261,7 @@ function TecnicoGroup({ tecnico, onVerDetalle, onVerContrato }) {
               <div className="bitacora-work-meta">
                 <span>Comunidad: {trabajo.comunidad}</span>
                 <span>Direccion: {trabajo.direccion}</span>
+                <span>Costo instalacion: {formatCurrency(trabajo.contrato_costo_instalacion)}</span>
                 {trabajo.es_imprevista && <span>Instalacion imprevista</span>}
               </div>
 
@@ -318,6 +331,7 @@ function DetalleTrabajoModal({ trabajo, onClose, onVerContrato }) {
                 <DetailItem label="Potencia" value={detalle.potencia != null ? `${detalle.potencia} dBm` : 'N/A'} />
                 <DetailItem label="Alfanumerico" value={detalle.alfanumerico_equipo} />
                 <DetailItem label="Paquete" value={detalle.paquete} />
+                <DetailItem label="Costo de instalacion cobrado" value={formatCurrency(detalle.contrato_costo_instalacion)} />
               </DetailSection>
 
               <DetailSection title="Materiales usados">

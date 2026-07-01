@@ -91,6 +91,10 @@
   border-left-color: var(--fiber-primary-dark);
 }
 
+.bitacora-summary-card.money {
+  border-left-color: #0891b2;
+}
+
 .bitacora-summary-card-value {
   color: var(--fiber-black);
   font-size: 2.15rem;
@@ -188,6 +192,11 @@
 .bitacora-tech-badge.confirmacion {
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.bitacora-tech-badge.money {
+  background: #cffafe;
+  color: #0e7490;
 }
 
 .bitacora-work-list {
