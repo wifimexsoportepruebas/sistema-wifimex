@@ -1,0 +1,144 @@
+/* AtencionDashboard Styles */
+
+.atencion-dashboard {
+  animation: fadeInAtencion 0.3s ease-in-out;
+}
+
+.dashboard-grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+/* Quick Actions Grid */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.action-card {
+  display: flex;
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+.action-card-icon {
+  flex: 0 0 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 850;
+  font-size: 0.95rem;
+  color: #ffffff;
+}
+
+.action-card-icon.pr { background: #3b82f6; } /* Azul */
+.action-card-icon.lc { background: #10b981; } /* Verde */
+.action-card-icon.ac { background: #eab308; } /* Amarillo */
+.action-card-icon.ar { background: #8b5cf6; } /* Morado */
+
+.action-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-card-content h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.action-card-content p {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.action-card-btn {
+  align-self: flex-start;
+  min-height: auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 750;
+  color: #3b82f6;
+  cursor: pointer;
+}
+
+/* Stats Summary Grid */
+.stats-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  text-align: center;
+}
+
+.stat-card-value {
+  font-size: 2rem;
+  font-weight: 850;
+  color: #475569;
+  line-height: 1;
+}
+
+.stat-card-label {
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: #64748b;
+  margin-top: 6px;
+}
+
+/* Animations */
+@keyframes fadeInAtencion {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjust */
+@media (max-width: 640px) {
+  .quick-actions-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .stats-summary-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}

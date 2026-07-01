@@ -13,6 +13,7 @@ import { handleComunidadesAdminRoutes } from './routes/comunidades-admin.routes.
 import { handleComunidadesResumenRoute } from './routes/comunidades-resumen.routes.js'
 import { handlePuntosCobroPublicRoutes } from './routes/puntos-cobro-public.routes.js'
 import { handlePuntosCobroAdminRoutes } from './routes/puntos-cobro-admin.routes.js'
+import { handleAtencionDashboardRoutes } from './routes/atencion-dashboard.routes.js'
 import { corsHeaders, withCors } from './utils/cors.js'
 import { json } from './utils/response.js'
 
@@ -27,6 +28,10 @@ export default {
     try {
       if (url.pathname.startsWith('/api/auth') || url.pathname === '/api/login' || url.pathname === '/api/me' || url.pathname === '/api/logout') {
         return withCors(await handleAuthRoutes(request, env, url))
+      }
+
+      if (url.pathname === '/api/atencion/dashboard-resumen') {
+        return withCors(await handleAtencionDashboardRoutes(request, env, url))
       }
 
       if (url.pathname.startsWith('/api/punto-cobro')) {

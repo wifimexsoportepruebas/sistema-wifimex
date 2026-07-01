@@ -89,12 +89,7 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
         ) : activeView === 'atencion' ? (
           <div className="dashboard-content">
             {roles.includes('ATENCION_CLIENTE') ? (
-              <RoleHome
-                kicker="Atencion al cliente"
-                title="Panel de atencion"
-                actionLabel="Alta de reporte"
-                onAction={() => handleNavigate('reportes-atencion')}
-              />
+              <AtencionDashboard apiUrl={apiUrl} token={token} usuario={usuario} onNavigate={handleNavigate} />
             ) : <AccessDenied title="Panel de atencion" />}
           </div>
         ) : activeView === 'soporte' ? (
@@ -153,12 +148,7 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
           <div className="dashboard-content">
             {primaryRole === 'ADMIN' && <AdminHome onNavigate={handleNavigate} />}
             {primaryRole === 'ATENCION_CLIENTE' && (
-              <RoleHome
-                kicker="Atencion al cliente"
-                title="Panel de atencion"
-                actionLabel="Alta de reporte"
-                onAction={() => handleNavigate('reportes-atencion')}
-              />
+              <AtencionDashboard apiUrl={apiUrl} token={token} usuario={usuario} onNavigate={handleNavigate} />
             )}
             {(primaryRole === 'SOPORTE' || primaryRole === 'SOPORTE_FIBRA') && <RoleHome kicker="Soporte" title="Panel de soporte" />}
             {(primaryRole === 'TECNICO' || primaryRole === 'TECNICO_FIBRA') && <TecnicoDashboard apiUrl={apiUrl} token={token} usuario={usuario} />}
