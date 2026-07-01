@@ -22,8 +22,13 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [selectedContract, setSelectedContract] = useState(null)
   const [customNumeroContrato, setCustomNumeroContrato] = useState('')
+  const [isChangeMode, setIsChangeMode] = useState(false)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
+
+  const canManageContracts = useMemo(() => {
+    return roles.includes('ADMIN') || roles.includes('SOPORTE') || roles.includes('SOPORTE_FIBRA') || roles.includes('ATENCION_CLIENTE')
+  }, [roles])
 
   const loadComunidades = useCallback(async () => {
     try {
@@ -110,7 +115,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
     }
   }, [apiUrl, authHeaders])
 
-  const handleOpenVincularModal = useCallback((cliente) => {
+  const handleOpenVincularModal = useCallback((cliente, isChange = false) => {
     if (cliente.estado_servicio !== 'ACTIVO') {
       Swal.fire({
         icon: 'warning',
@@ -120,6 +125,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
       })
       return
     }
+    setIsChangeMode(isChange)
     setSelectedCliente(cliente)
     setIsModalOpen(true)
     setSearchQuery('')
@@ -147,27 +153,65 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
       return
     }
 
+    if (isChangeMode && selectedContract.r2_key === selectedCliente.contrato_r2_key) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'Este contrato ya está vinculado a este cliente.', confirmButtonColor: '#4274D9' })
+      return
+    }
+
+    if (isChangeMode) {
+      const isSystemGenerated = selectedCliente.contrato_origen === 'GENERADO'
+      const warningText = isSystemGenerated
+        ? 'Este contrato fue generado por el sistema. Si lo cambias, el contrato anterior quedará desvinculado del cliente, pero el PDF no se eliminará.'
+        : 'El contrato anterior quedará desvinculado, pero el PDF no se eliminará.'
+
+      const result = await Swal.fire({
+        title: '¿Cambiar contrato del cliente?',
+        text: warningText,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Cambiar contrato',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#4274D9',
+        cancelButtonColor: '#cbd5e1'
+      })
+
+      if (!result.isConfirmed) return
+    }
+
     try {
-      const response = await fetch(`${apiUrl}/api/contratos/vincular-existente`, {
+      const endpoint = isChangeMode
+        ? `${apiUrl}/api/contratos/cambiar-vinculo`
+        : `${apiUrl}/api/contratos/vincular-existente`
+
+      const payload = isChangeMode
+        ? {
+            cliente_id: selectedCliente.id,
+            contrato_actual_id: selectedCliente.contrato_id,
+            nuevo_r2_key: selectedContract.r2_key,
+            numero_contrato: customNumeroContrato.trim()
+          }
+        : {
+            cliente_id: selectedCliente.id,
+            r2_key: selectedContract.r2_key,
+            numero_contrato: customNumeroContrato.trim()
+          }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           ...authHeaders,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          cliente_id: selectedCliente.id,
-          r2_key: selectedContract.r2_key,
-          numero_contrato: customNumeroContrato.trim()
-        })
+        body: JSON.stringify(payload)
       })
 
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error ?? 'No se pudo vincular el contrato.')
+      if (!response.ok) throw new Error(data.error ?? 'No se pudo procesar la vinculación del contrato.')
 
       Swal.fire({
         icon: 'success',
-        title: 'Vínculo Exitoso',
-        text: 'Contrato vinculado correctamente.',
+        title: isChangeMode ? 'Contrato Cambiado' : 'Vínculo Exitoso',
+        text: isChangeMode ? 'Contrato cambiado correctamente.' : 'Contrato vinculado correctamente.',
         confirmButtonColor: '#4274D9'
       })
 
@@ -307,23 +351,37 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                   </td>
                   <td>
                     {cliente.contrato_id ? (
-                      <button
-                        type="button"
-                        className="fiber-link-button"
-                        style={{ fontWeight: 'bold' }}
-                        onClick={() => handleVerContrato(cliente.contrato_id)}
-                      >
-                        Ver contrato
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="fiber-link-button"
+                          style={{ fontWeight: 'bold' }}
+                          onClick={() => handleVerContrato(cliente.contrato_id)}
+                        >
+                          Ver contrato
+                        </button>
+                        {canManageContracts && (
+                          <button
+                            type="button"
+                            className="fiber-link-button"
+                            style={{ color: '#d97706', fontSize: '0.85rem' }}
+                            onClick={() => handleOpenVincularModal(cliente, true)}
+                          >
+                            Cambiar contrato
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <button
-                        type="button"
-                        className="fiber-primary-button"
-                        style={{ padding: '4px 10px', fontSize: '0.78rem', minHeight: 'auto', borderRadius: '8px' }}
-                        onClick={() => handleOpenVincularModal(cliente)}
-                      >
-                        Vincular
-                      </button>
+                      canManageContracts && (
+                        <button
+                          type="button"
+                          className="fiber-primary-button"
+                          style={{ padding: '4px 10px', fontSize: '0.78rem', minHeight: 'auto', borderRadius: '8px' }}
+                          onClick={() => handleOpenVincularModal(cliente, false)}
+                        >
+                          Vincular
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
@@ -349,7 +407,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
         <div className="client-modal-backdrop" onClick={() => setIsModalOpen(false)}>
           <div className="client-modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', maxHeight: '90vh' }}>
             <div className="client-modal-header">
-              <h3>Vincular Contrato Existente</h3>
+              <h3>{isChangeMode ? 'Cambiar contrato vinculado' : 'Vincular Contrato Existente'}</h3>
               <button type="button" onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
             
@@ -369,6 +427,17 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                 </div>
               </div>
             </div>
+
+            {isChangeMode && (
+              <div style={{ padding: '12px 24px 0', fontSize: '0.85rem' }}>
+                <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', padding: '10px 14px', borderRadius: '10px', color: '#78350f' }}>
+                  <h4 style={{ margin: '0 0 4px', fontWeight: 'bold', fontSize: '0.9rem' }}>Contrato actual:</h4>
+                  <div><strong>Número:</strong> {selectedCliente.contrato_numero || 'Sin número'}</div>
+                  <div><strong>Origen:</strong> {selectedCliente.contrato_origen || 'GENERADO'}</div>
+                  <div style={{ wordBreak: 'break-all' }}><strong>Archivo (R2):</strong> {selectedCliente.contrato_r2_key || 'No disponible'}</div>
+                </div>
+              </div>
+            )}
 
             <input
               type="text"
@@ -457,7 +526,7 @@ function ClientesLista({ apiUrl, token, roles = [] }) {
                     onClick={handleConfirmVincular}
                     style={{ minHeight: 'auto', padding: '10px 20px' }}
                   >
-                    Vincular Contrato
+                    {isChangeMode ? 'Cambiar Contrato' : 'Vincular Contrato'}
                   </button>
                 </div>
               </div>

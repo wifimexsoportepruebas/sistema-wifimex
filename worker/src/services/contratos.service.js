@@ -1040,4 +1040,125 @@ function slugPath(value) {
     .replace(/^_+|_+$/g, '')
 }
 
+export async function cambiarVinculoContrato(request, env) {
+  const auth = await requireAuth(request, env, ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA', 'ATENCION_CLIENTE'])
+  if (auth.response) return auth.response
+
+  const body = await request.json().catch(() => null)
+  if (!body) return json({ ok: false, error: 'Cuerpo de petición inválido.' }, 400)
+
+  const clienteId = Number(body.cliente_id)
+  const contratoActualId = Number(body.contrato_actual_id)
+  const nuevoR2Key = String(body.nuevo_r2_key || '').trim()
+
+  if (!clienteId || !contratoActualId || !nuevoR2Key) {
+    return json({ ok: false, error: 'cliente_id, contrato_actual_id y nuevo_r2_key son obligatorios.' }, 400)
+  }
+
+  // 1. Validar cliente
+  const cliente = await env.DB.prepare(
+    `SELECT id FROM clientes WHERE id = ?`
+  ).bind(clienteId).first()
+  if (!cliente) return json({ ok: false, error: 'Cliente no encontrado.' }, 404)
+
+  // 2. Validar servicio activo
+  const servicio = await env.DB.prepare(
+    `SELECT id FROM servicios_fibra WHERE cliente_id = ? AND estado_servicio = 'ACTIVO' LIMIT 1`
+  ).bind(clienteId).first()
+  if (!servicio) {
+    return json({ ok: false, error: 'Este cliente no tiene servicio activo. Primero debe tener un servicio para poder cambiar el contrato.' }, 400)
+  }
+
+  // 3. Validar contrato actual pertenece al cliente
+  const contratoActual = await env.DB.prepare(
+    `SELECT id, r2_key FROM contratos WHERE id = ? AND cliente_id = ? AND estado IN ('GENERADO', 'REGENERADO') LIMIT 1`
+  ).bind(contratoActualId, clienteId).first()
+  if (!contratoActual) {
+    return json({ ok: false, error: 'El contrato actual especificado no pertenece a este cliente o no está activo.' }, 400)
+  }
+
+  // 4. Validar nuevo r2_key es un PDF
+  if (!nuevoR2Key.toLowerCase().endsWith('.pdf')) {
+    return json({ ok: false, error: 'El nuevo archivo debe ser un PDF.' }, 400)
+  }
+
+  // 5. Validar nuevo r2_key no es el mismo contrato actual
+  if (nuevoR2Key === contratoActual.r2_key) {
+    return json({ ok: false, error: 'Este contrato ya está vinculado a este cliente.' }, 400)
+  }
+
+  // 6. Validar nuevo r2_key existe en R2
+  validarBindingsContratos(env)
+  try {
+    const headResult = await env.CONTRATOS_BUCKET.head(nuevoR2Key)
+    if (!headResult) {
+      return json({ ok: false, error: 'El nuevo archivo del contrato no existe en R2.' }, 400)
+    }
+  } catch (err) {
+    return json({ ok: false, error: `Error al verificar archivo en R2: ${err.message}` }, 400)
+  }
+
+  // 7. Validar nuevo r2_key no está vinculado activamente a otro cliente
+  const dupOther = await env.DB.prepare(
+    `SELECT id, cliente_id FROM contratos WHERE r2_key = ? AND estado IN ('GENERADO', 'REGENERADO') LIMIT 1`
+  ).bind(nuevoR2Key).first()
+  if (dupOther && dupOther.cliente_id !== clienteId) {
+    return json({ ok: false, error: 'Este contrato ya está vinculado a otro cliente. No se puede usar.' }, 400)
+  }
+
+  // 8. Determinar número de contrato
+  let finalNumeroContrato = String(body.numero_contrato || '').trim()
+  if (!finalNumeroContrato) {
+    const filename = nuevoR2Key.substring(nuevoR2Key.lastIndexOf('/') + 1)
+    const matchNum = filename.match(/_(\d+)\.pdf$/i) || filename.match(/(\d+)\.pdf$/i)
+    if (matchNum) {
+      finalNumeroContrato = `R2-${matchNum[1]}`
+    } else {
+      finalNumeroContrato = `R2-${getShortHash(nuevoR2Key)}`
+    }
+  } else {
+    const rawNum = finalNumeroContrato.replace(/^r2-/i, '')
+    finalNumeroContrato = `R2-${rawNum}`
+  }
+
+  // Check duplicate contract number
+  const dupNum = await env.DB.prepare(
+    `SELECT id FROM contratos WHERE numero_contrato = ? AND cliente_id != ? LIMIT 1`
+  ).bind(finalNumeroContrato, clienteId).first()
+  if (dupNum) {
+    finalNumeroContrato = `${finalNumeroContrato}-${getShortHash(nuevoR2Key)}`
+  }
+
+  // 9. Ejecutar transacción/lógica en batch:
+  // - Cambiar contrato actual a CANCELADO
+  // - Insertar nuevo contrato
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE contratos SET estado = 'CANCELADO' WHERE id = ?`
+    ).bind(contratoActualId),
+    env.DB.prepare(
+      `INSERT INTO contratos (
+         numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
+         r2_key, content_type, estado, origen, aplica_reconexion,
+         cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
+         costo_instalacion, vigencia_contrato, nombre_instalador,
+         generado_por_usuario_id, fecha_generado
+       ) VALUES (?, ?, ?, NULL, ?, 'application/pdf', 'GENERADO', 'EXISTENTE_R2', 'SI', 350, 'HUAWEI', 1, 800, 0, 'SIN PLAZO FORZOSO', 'SISTEMA', ?, datetime('now'))`
+    ).bind(
+      finalNumeroContrato,
+      clienteId,
+      servicio.id,
+      nuevoR2Key,
+      auth.session.usuario_id
+    )
+  ])
+
+  return json({
+    ok: true,
+    message: 'Contrato cambiado correctamente.',
+    numero_contrato: finalNumeroContrato,
+    r2_key: nuevoR2Key
+  })
+}
+
 

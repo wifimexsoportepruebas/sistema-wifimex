@@ -28,6 +28,7 @@ function ClientesAlta({ apiUrl, token }) {
   const [importComunidadId, setImportComunidadId] = useState('')
   const [csvFile, setCsvFile] = useState(null)
   const [importing, setImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState(null)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
 
@@ -222,7 +223,9 @@ function ClientesAlta({ apiUrl, token }) {
         event.target.reset()
         await loadCatalogs()
       }
+      setImportSummary(data)
     } catch (err) {
+      setImportSummary(null)
       Swal.fire({ icon: 'error', title: 'Error de importacion', text: err.message, confirmButtonColor: '#4274D9' })
     } finally {
       setImporting(false)
@@ -239,10 +242,10 @@ function ClientesAlta({ apiUrl, token }) {
       </section>
 
       <div className="fiber-tabs">
-        <button type="button" className={tab === 'manual' ? 'active' : ''} onClick={() => setTab('manual')}>
+        <button type="button" className={tab === 'manual' ? 'active' : ''} onClick={() => { setTab('manual'); setImportSummary(null); }}>
           Alta manual
         </button>
-        <button type="button" className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>
+        <button type="button" className={tab === 'import' ? 'active' : ''} onClick={() => { setTab('import'); setImportSummary(null); }}>
           Importacion masiva
         </button>
       </div>
@@ -360,6 +363,128 @@ function ClientesAlta({ apiUrl, token }) {
             {importing ? 'Importando...' : 'Importar archivo'}
           </button>
         </form>
+      )}
+
+      {tab === 'import' && importSummary && (
+        <section className="fiber-panel client-import-results" style={{ marginTop: '24px' }}>
+          <span className="fiber-kicker">Resultados del proceso</span>
+          <h2>Resumen de vinculación de contratos</h2>
+
+          {/* Cards Grid */}
+          <div className="comunidades-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', margin: '20px 0' }}>
+            <div className="comunidades-summary-card" style={{ borderLeft: '4px solid #475569', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="comunidades-summary-card-value" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#1e293b' }}>{importSummary.clientes_importados ?? 0}</div>
+              <div className="comunidades-summary-card-label" style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 'bold' }}>Clientes Importados</div>
+            </div>
+            <div className="comunidades-summary-card" style={{ borderLeft: '4px solid #10b981', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="comunidades-summary-card-value" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#10b981' }}>{importSummary.contratos_auto_vinculados ?? 0}</div>
+              <div className="comunidades-summary-card-label" style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 'bold' }}>Vinculados Auto</div>
+            </div>
+            <div className="comunidades-summary-card" style={{ borderLeft: '4px solid #eab308', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="comunidades-summary-card-value" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#d97706' }}>{importSummary.contratos_sugeridos ?? 0}</div>
+              <div className="comunidades-summary-card-label" style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 'bold' }}>Sugerencias</div>
+            </div>
+            <div className="comunidades-summary-card" style={{ borderLeft: '4px solid #64748b', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="comunidades-summary-card-value" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#64748b' }}>{importSummary.sin_contrato ?? 0}</div>
+              <div className="comunidades-summary-card-label" style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 'bold' }}>Sin Contrato</div>
+            </div>
+            <div className="comunidades-summary-card" style={{ borderLeft: '4px solid #ef4444', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="comunidades-summary-card-value" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ef4444' }}>{importSummary.conflictos ?? 0}</div>
+              <div className="comunidades-summary-card-label" style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 'bold' }}>Conflictos</div>
+            </div>
+          </div>
+
+          {/* Detailed Lists Sections */}
+          <div className="results-sections" style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '24px' }}>
+            
+            {/* 1. Vinculados Automáticamente */}
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', borderBottom: '2px solid #10b981', paddingBottom: '6px', marginBottom: '12px' }}>
+                1. Contratos vinculados automáticamente ({importSummary.detalle?.auto_vinculados?.length ?? 0})
+              </h3>
+              {(!importSummary.detalle?.auto_vinculados || importSummary.detalle.auto_vinculados.length === 0) ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Ninguno vinculado de forma automática.</p>
+              ) : (
+                <div style={{ maxHeight: '200px', overflowY: 'auto', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+                  {importSummary.detalle.auto_vinculados.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: idx < importSummary.detalle.auto_vinculados.length - 1 ? '1px solid #e2e8f0' : 'none', fontSize: '0.88rem' }}>
+                      <span style={{ fontWeight: '750', color: '#1e293b' }}>{item.cliente_nombre}</span>
+                      <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{item.filename} <span style={{ background: '#eef4fb', color: '#0077c8', padding: '2px 6px', borderRadius: '4px', fontSize: '0.76rem', fontWeight: 'bold' }}>{item.numero_contrato}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Sugerencias para Revisión */}
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', borderBottom: '2px solid #eab308', paddingBottom: '6px', marginBottom: '12px' }}>
+                2. Sugerencias para revisión ({importSummary.detalle?.sugerencias?.length ?? 0})
+              </h3>
+              {(!importSummary.detalle?.sugerencias || importSummary.detalle.sugerencias.length === 0) ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No hay sugerencias para revisar.</p>
+              ) : (
+                <div style={{ maxHeight: '250px', overflowY: 'auto', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+                  {importSummary.detalle.sugerencias.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '10px 0', borderBottom: idx < importSummary.detalle.sugerencias.length - 1 ? '1px solid #e2e8f0' : 'none', fontSize: '0.88rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontWeight: '750', color: '#1e293b' }}>{item.cliente_nombre}</span>
+                        <span style={{ color: '#64748b' }}>Coincidencia: <strong style={{ color: '#d97706' }}>{item.score}%</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                        <span style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.82rem' }}>Archivo: {item.filename}</span>
+                        <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Razón: {item.razon}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Sin Contrato Encontrado */}
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', borderBottom: '2px solid #94a3b8', paddingBottom: '6px', marginBottom: '12px' }}>
+                3. Clientes sin contrato encontrado ({importSummary.detalle?.sin_contrato?.length ?? 0})
+              </h3>
+              {(!importSummary.detalle?.sin_contrato || importSummary.detalle.sin_contrato.length === 0) ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Todos los clientes tienen coincidencia o sugerencia.</p>
+              ) : (
+                <div style={{ maxHeight: '180px', overflowY: 'auto', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    {importSummary.detalle.sin_contrato.map((item, idx) => (
+                      <div key={idx} style={{ background: '#ffffff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #f1f5f9', fontSize: '0.84rem', color: '#475569', fontWeight: '600' }}>
+                        {item.cliente_nombre}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Conflictos Omitidos */}
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', borderBottom: '2px solid #ef4444', paddingBottom: '6px', marginBottom: '12px' }}>
+                4. Conflictos / Omitidos ({importSummary.detalle?.conflictos?.length ?? 0})
+              </h3>
+              {(!importSummary.detalle?.conflictos || importSummary.detalle.conflictos.length === 0) ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Sin conflictos detectados.</p>
+              ) : (
+                <div style={{ maxHeight: '180px', overflowY: 'auto', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+                  {importSummary.detalle.conflictos.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < importSummary.detalle.conflictos.length - 1 ? '1px solid #e2e8f0' : 'none', fontSize: '0.88rem' }}>
+                      <div>
+                        <strong style={{ color: '#ef4444' }}>{item.cliente_nombre}</strong>
+                        {item.filename && <div style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace', marginTop: '2px' }}>Archivo: {item.filename}</div>}
+                      </div>
+                      <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.82rem' }}>{item.razon}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </section>
       )}
     </div>
   )

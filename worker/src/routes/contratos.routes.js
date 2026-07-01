@@ -7,11 +7,16 @@ import {
   listContratosCliente,
   getContratosSugeridos,
   vincularContratoExistente,
+  cambiarVinculoContrato,
 } from '../services/contratos.service.js'
 
 export async function handleContratosRoutes(request, env, url) {
   if (request.method === 'POST' && url.pathname === '/api/contratos/generar-desde-instalacion') {
     return generarContratoDesdeInstalacion(request, env)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/contratos/cambiar-vinculo') {
+    return cambiarVinculoContrato(request, env)
   }
 
   if (request.method === 'GET' && url.pathname === '/api/contratos/r2/sugerencias') {

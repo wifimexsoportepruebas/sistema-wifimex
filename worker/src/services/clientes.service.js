@@ -95,7 +95,8 @@ export async function listClientes(request, env, url) {
        ciclos_corte.nombre AS ciclo_corte_nombre,
        (SELECT id FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_id,
        (SELECT r2_key FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_r2_key,
-       (SELECT COALESCE(origen, 'GENERADO') FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_origen
+       (SELECT COALESCE(origen, 'GENERADO') FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_origen,
+       (SELECT numero_contrato FROM contratos WHERE cliente_id = clientes.id AND estado = 'GENERADO' ORDER BY fecha_generado DESC, id DESC LIMIT 1) AS contrato_numero
      FROM clientes
      JOIN comunidades ON comunidades.id = clientes.comunidad_id
      LEFT JOIN servicios_fibra ON servicios_fibra.cliente_id = clientes.id
@@ -250,7 +251,7 @@ export async function bulkCreateClientes(request, env) {
 }
 
 export async function importClientes(request, env) {
-  const auth = await requireAuth(request, env, ['ADMIN', 'ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'])
+  const auth = await requireAuth(request, env, ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'])
   if (auth.response) return auth.response
 
   const formData = await request.formData().catch(() => null)
@@ -262,7 +263,7 @@ export async function importClientes(request, env) {
   }
 
   const comunidad = await env.DB.prepare(
-    'SELECT id, prefijo, numero_inicial_cliente, siguiente_numero_cliente FROM comunidades WHERE id = ?'
+    'SELECT id, nombre, prefijo, numero_inicial_cliente, siguiente_numero_cliente FROM comunidades WHERE id = ?'
   ).bind(comunidadId).first()
   if (!comunidad) return json({ error: 'La comunidad seleccionada no existe' }, 404)
 
@@ -281,6 +282,45 @@ export async function importClientes(request, env) {
   let maxNumber = Number(comunidad.siguiente_numero_cliente ?? comunidad.numero_inicial_cliente ?? 0)
   const summary = { rows: 0, imported: 0, duplicates: 0, errors: 0, sin_paquete: 0, sin_ciclo: 0, sin_alfanumerico: 0 }
   const errors = []
+
+  // Pre-load R2 Objects if bucket exists
+  const comunidadFolder = slugPath(comunidad.nombre || '') + '/'
+  let r2Objects = []
+  if (env.CONTRATOS_BUCKET) {
+    try {
+      const listResult = await env.CONTRATOS_BUCKET.list({ prefix: comunidadFolder })
+      r2Objects = listResult.objects || []
+    } catch (err) {
+      console.error('Error listing R2 bucket in importClientes:', err)
+    }
+  }
+
+  // Pre-load existing links and numbers from contratos table to avoid duplicates/conflicts
+  const linkedKeysQuery = await env.DB.prepare(
+    "SELECT r2_key FROM contratos WHERE estado IN ('GENERADO', 'REGENERADO') AND r2_key IS NOT NULL"
+  ).all()
+  const linkedKeys = new Set((linkedKeysQuery.results || []).map(r => r.r2_key))
+
+  const existingNumbersQuery = await env.DB.prepare(
+    "SELECT numero_contrato FROM contratos"
+  ).all()
+  const existingNumbers = new Set((existingNumbersQuery.results || []).map(r => r.numero_contrato))
+
+  // Pre-calculate normalized names count in the CSV to detect duplicate names
+  const normalizedNamesCount = {}
+  for (const row of dataRows) {
+    if (!row.some((cell) => String(cell ?? '').trim())) continue
+    const nombre = pickCsvValue(headers, row, ['servicio', 'nombre', 'titular', 'cliente'])
+    if (nombre) {
+      const norm = slugPath(nombre)
+      normalizedNamesCount[norm] = (normalizedNamesCount[norm] || 0) + 1
+    }
+  }
+
+  const autoVinculadosList = []
+  const sugerenciasList = []
+  const sinContratoList = []
+  const conflictosList = []
 
   for (let index = 0; index < dataRows.length; index++) {
     const row = dataRows[index]
@@ -344,6 +384,129 @@ export async function importClientes(request, env) {
       summary.imported++
       maxNumber = Math.max(maxNumber, numericNumber)
       if (!explicitNumber) nextNumber++
+
+      // Match and link old contracts from R2
+      const insertedClient = await env.DB.prepare(
+        'SELECT id FROM clientes WHERE numero_cliente = ?'
+      ).bind(numeroCliente).first()
+
+      const insertedService = await env.DB.prepare(
+        "SELECT id FROM servicios_fibra WHERE cliente_id = ? AND estado_servicio = 'ACTIVO' LIMIT 1"
+      ).bind(insertedClient.id).first()
+
+      const fullName = [nameParts.nombres, nameParts.apellido_paterno, nameParts.apellido_materno].filter(Boolean).join(' ')
+      const clientNormalized = slugPath(fullName)
+      const clientWords = clientNormalized.split('_').filter(Boolean)
+
+      let candidates = []
+      for (const obj of r2Objects) {
+        if (!obj.key.toLowerCase().endsWith('.pdf')) continue
+        const filename = obj.key.substring(obj.key.lastIndexOf('/') + 1)
+        const fileNormalized = slugPath(filename.replace(/\.pdf$/i, ''))
+        const fileNormalizedNoNums = fileNormalized.replace(/(_\d+)+$/, '')
+
+        let score = 0
+        if (fileNormalizedNoNums.includes(clientNormalized) || clientNormalized.includes(fileNormalizedNoNums)) {
+          score = 100
+        } else {
+          let wordsFound = 0
+          for (const word of clientWords) {
+            if (fileNormalizedNoNums.includes(word)) {
+              wordsFound++
+            }
+          }
+          if (clientWords.length > 0) {
+            score = Math.round((wordsFound / clientWords.length) * 80)
+          }
+        }
+
+        if (score >= 80) {
+          const matchNum = filename.match(/_(\d+)\.pdf$/i) || filename.match(/(\d+)\.pdf$/i)
+          candidates.push({
+            r2_key: obj.key,
+            filename,
+            score,
+            numero_detectado: matchNum ? matchNum[1] : null
+          })
+        }
+      }
+
+      candidates.sort((a, b) => b.score - a.score || a.filename.localeCompare(b.filename))
+
+      if (candidates.length === 0) {
+        sinContratoList.push({
+          cliente_nombre: fullName
+        })
+      } else {
+        const bestCandidate = candidates[0]
+        const isDuplicateNameInCsv = normalizedNamesCount[clientNormalized] > 1
+        const isAlreadyLinked = linkedKeys.has(bestCandidate.r2_key)
+        const hasMultipleCandidates = candidates.length > 1
+        const hasNoService = !insertedService
+
+        if (isDuplicateNameInCsv || isAlreadyLinked || hasMultipleCandidates || hasNoService) {
+          let reason = ''
+          if (isDuplicateNameInCsv) reason = 'Nombre duplicado en archivo CSV.'
+          else if (isAlreadyLinked) reason = 'Contrato ya vinculado a otro cliente.'
+          else if (hasMultipleCandidates) reason = 'Múltiples contratos sugeridos (ambigüedad).'
+          else if (hasNoService) reason = 'Cliente sin servicio activo.'
+
+          conflictosList.push({
+            cliente_nombre: fullName,
+            filename: bestCandidate.filename,
+            r2_key: bestCandidate.r2_key,
+            razon: reason
+          })
+        } else {
+          if (bestCandidate.score === 100) {
+            let numeroContrato = ''
+            if (bestCandidate.numero_detectado) {
+              numeroContrato = `R2-${bestCandidate.numero_detectado}`
+            } else {
+              numeroContrato = `R2-${getShortHash(bestCandidate.r2_key)}`
+            }
+
+            if (existingNumbers.has(numeroContrato)) {
+              numeroContrato = `${numeroContrato}-${getShortHash(bestCandidate.r2_key)}`
+            }
+
+            await env.DB.prepare(
+              `INSERT INTO contratos (
+                 numero_contrato, cliente_id, servicio_fibra_id, instalacion_fibra_id,
+                 r2_key, content_type, estado, origen, aplica_reconexion,
+                 cantidad_reconexion, marca_equipo, numero_equipos, costo_equipo_penalidad,
+                 costo_instalacion, vigencia_contrato, nombre_instalador,
+                 generado_por_usuario_id, fecha_generado
+               ) VALUES (?, ?, ?, NULL, ?, 'application/pdf', 'GENERADO', 'EXISTENTE_R2', 'SI', 350, 'HUAWEI', 1, 800, 0, 'SIN PLAZO FORZOSO', 'SISTEMA', ?, datetime('now'))`
+            ).bind(
+              numeroContrato,
+              insertedClient.id,
+              insertedService.id,
+              bestCandidate.r2_key,
+              auth.session.usuario_id
+            ).run()
+
+            linkedKeys.add(bestCandidate.r2_key)
+            existingNumbers.add(numeroContrato)
+
+            autoVinculadosList.push({
+              cliente_nombre: fullName,
+              filename: bestCandidate.filename,
+              r2_key: bestCandidate.r2_key,
+              numero_contrato: numeroContrato
+            })
+          } else {
+            sugerenciasList.push({
+              cliente_nombre: fullName,
+              filename: bestCandidate.filename,
+              r2_key: bestCandidate.r2_key,
+              score: bestCandidate.score,
+              razon: 'Coincidencia parcial de nombre'
+            })
+          }
+        }
+      }
+
     } catch (err) {
       summary.errors++
       errors.push({ row: index + headerIndex + 2, error: err.message, value: numeroCliente })
@@ -361,13 +524,30 @@ export async function importClientes(request, env) {
     ).bind(maxNumber, maxNumber, comunidadId).run()
   }
 
-  if (summary.imported === 0 && summary.errors > 0) {
-    return json({ ok: false, partial: false, message: 'No se importo ningun cliente. Revisa los errores.', summary, errors })
-  }
-  if (summary.imported > 0 && summary.errors > 0) {
-    return json({ ok: true, partial: true, message: 'Importacion parcial.', summary, errors })
-  }
-  return json({ ok: true, partial: false, message: 'Importacion completada correctamente.', summary, errors })
+  const isPartial = summary.imported > 0 && summary.errors > 0
+  const isAllErrors = summary.imported === 0 && summary.errors > 0
+  let finalMessage = 'Importacion completada correctamente.'
+  if (isAllErrors) finalMessage = 'No se importo ningun cliente. Revisa los errores.'
+  else if (isPartial) finalMessage = 'Importacion parcial.'
+
+  return json({
+    ok: !isAllErrors,
+    partial: isPartial,
+    message: finalMessage,
+    summary,
+    errors,
+    clientes_importados: summary.imported,
+    contratos_auto_vinculados: autoVinculadosList.length,
+    contratos_sugeridos: sugerenciasList.length,
+    sin_contrato: sinContratoList.length,
+    conflictos: conflictosList.length,
+    detalle: {
+      auto_vinculados: autoVinculadosList,
+      sugerencias: sugerenciasList,
+      sin_contrato: sinContratoList,
+      conflictos: conflictosList
+    }
+  })
 }
 
 async function validateClientePayload(env, body) {
@@ -406,3 +586,24 @@ async function validateClientePayload(env, body) {
   data.precio_mensual = Number.isFinite(data.precio_mensual) && data.precio_mensual > 0 ? data.precio_mensual : Number(paquete.precio_mensual ?? 0)
   return { data, comunidad }
 }
+
+function slugPath(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\/\\:*?"<>|]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function getShortHash(str) {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36).substring(0, 6).toUpperCase()
+}
+
