@@ -24,6 +24,8 @@ function ReportesAtencion({ apiUrl, token }) {
   const [reportesConfirmacion, setReportesConfirmacion] = useState([])
   const [form, setForm] = useState(initialForm)
   const [filters, setFilters] = useState({ fecha: todayDate(), comunidad_id: '', tipo_reporte: '' })
+  const [confirmationDateFilter, setConfirmationDateFilter] = useState('hoy')
+  const [confirmationCustomDate, setConfirmationCustomDate] = useState(todayDate())
   const [loading, setLoading] = useState(true)
   const [loadingConfirmacion, setLoadingConfirmacion] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -73,7 +75,11 @@ function ReportesAtencion({ apiUrl, token }) {
   const loadReportesConfirmacion = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingConfirmacion(true)
     try {
-      const response = await fetch(`${apiUrl}/api/reportes?confirmacion=1`, { headers: authHeaders })
+      const params = new URLSearchParams()
+      params.set('confirmacion', '1')
+      params.set('confirmacion_fecha', getConfirmationDateParam(confirmationDateFilter, confirmationCustomDate))
+
+      const response = await fetch(`${apiUrl}/api/reportes?${params.toString()}`, { headers: authHeaders })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'No se pudieron cargar reportes por confirmar.')
       setReportesConfirmacion(data.reportes ?? [])
@@ -83,7 +89,7 @@ function ReportesAtencion({ apiUrl, token }) {
     } finally {
       if (!silent) setLoadingConfirmacion(false)
     }
-  }, [apiUrl, authHeaders])
+  }, [apiUrl, authHeaders, confirmationDateFilter, confirmationCustomDate])
 
   const loadClientes = useCallback(async (comunidadId, search = '') => {
     if (!comunidadId && !search.trim()) {
@@ -539,6 +545,25 @@ function ReportesAtencion({ apiUrl, token }) {
           <h3>Reportes por confirmar ({reportesConfirmacion.length})</h3>
         </div>
 
+        <div className="confirmation-filter-bar">
+          <div className="confirmation-date-actions">
+            <button type="button" className={confirmationDateFilter === 'hoy' ? 'active' : ''} onClick={() => setConfirmationDateFilter('hoy')}>Hoy</button>
+            <button type="button" className={confirmationDateFilter === 'ayer' ? 'active' : ''} onClick={() => setConfirmationDateFilter('ayer')}>Ayer</button>
+            <button type="button" className={confirmationDateFilter === 'todas' ? 'active' : ''} onClick={() => setConfirmationDateFilter('todas')}>Todas</button>
+            <button type="button" className={confirmationDateFilter === 'fecha' ? 'active' : ''} onClick={() => setConfirmationDateFilter('fecha')}>Elegir fecha</button>
+          </div>
+          {confirmationDateFilter === 'fecha' && (
+            <input
+              type="date"
+              value={confirmationCustomDate}
+              onChange={(event) => setConfirmationCustomDate(event.target.value || todayDate())}
+            />
+          )}
+        </div>
+        <p className="confirmation-filter-summary">
+          {getConfirmationFilterLabel(confirmationDateFilter, confirmationCustomDate)} · {reportesConfirmacion.length} reporte(s)
+        </p>
+
         <div className="confirmation-list">
           {loadingConfirmacion && <p className="table-empty">Cargando reportes por confirmar...</p>}
           {!loadingConfirmacion && reportesConfirmacion.length === 0 && (
@@ -840,6 +865,18 @@ function formatEstado(estado) {
   if (estado === 'PENDIENTE_CONFIRMACION') return 'PENDIENTE CONFIRMACION'
   if (estado === 'NO_LOCALIZADO') return 'NO LOCALIZADO'
   return estado
+}
+
+function getConfirmationDateParam(filter, customDate) {
+  if (filter === 'fecha') return customDate || todayDate()
+  return filter || 'hoy'
+}
+
+function getConfirmationFilterLabel(filter, customDate) {
+  if (filter === 'ayer') return 'Viendo reportes a confirmar de ayer'
+  if (filter === 'todas') return 'Viendo todos los reportes a confirmar'
+  if (filter === 'fecha') return `Viendo reportes a confirmar del ${formatDate(customDate) || todayDate()}`
+  return 'Viendo reportes a confirmar de hoy'
 }
 
 function fullName(item) {

@@ -149,8 +149,70 @@
   font-size: 0.95rem;
 }
 
+.confirmation-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+
+.confirmation-date-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.confirmation-date-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  background: var(--fiber-white);
+  color: var(--fiber-primary-dark);
+  font-family: var(--font-main);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.confirmation-date-actions button:hover,
+.confirmation-date-actions button.active {
+  border-color: var(--fiber-primary);
+  background: rgba(66, 116, 217, 0.1);
+  color: var(--fiber-primary-dark);
+}
+
+.confirmation-filter-bar input[type="date"] {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  background: var(--fiber-white);
+  color: var(--fiber-text);
+  font-family: var(--font-main);
+  font-weight: 700;
+}
+
+.confirmation-filter-summary {
+  margin: 0 0 14px;
+  color: var(--fiber-muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 @media (max-width: 760px) {
   .installation-review {
     grid-template-columns: 1fr;
+  }
+
+  .confirmation-filter-bar,
+  .confirmation-date-actions,
+  .confirmation-filter-bar input[type="date"] {
+    width: 100%;
+  }
+
+  .confirmation-date-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

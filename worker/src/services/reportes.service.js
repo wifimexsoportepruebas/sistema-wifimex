@@ -147,9 +147,14 @@ export async function listReportes(request, env, url) {
   const values = []
   const fecha = url.searchParams.get('fecha')
   const confirmacion = url.searchParams.get('confirmacion') === '1'
+  const confirmacionFecha = normalizeConfirmacionFecha(url.searchParams.get('confirmacion_fecha'))
 
   if (confirmacion) {
-    filters.push("reportes.estado IN ('PENDIENTE_CONFIRMACION', 'NO_LOCALIZADO', 'EN_PROCESO', 'ASIGNADO')")
+    filters.push("reportes.estado = 'PENDIENTE_CONFIRMACION'")
+    if (confirmacionFecha !== 'todas') {
+      filters.push('date(COALESCE(seguimiento_confirmacion.fecha_pendiente_confirmacion, reportes.fecha_completado, reportes.fecha_reportada)) = date(?)')
+      values.push(resolveConfirmacionFecha(confirmacionFecha))
+    }
   } else if (fecha) {
     filters.push('date(reportes.fecha_reportada) = date(?)')
     values.push(fecha)
@@ -170,6 +175,7 @@ export async function listReportes(request, env, url) {
        reportes.tipo_reporte, COALESCE(reportes.origen, 'PROSPECTO') AS origen,
        reportes.comentario, reportes.estado, reportes.prioridad,
        reportes.fecha_programada, reportes.orden_ruta, reportes.fecha_completado,
+       seguimiento_confirmacion.fecha_pendiente_confirmacion,
        reportes.comentario_cierre, reportes.creado_por_usuario_id,
        comunidades.id AS comunidad_id, comunidades.nombre AS comunidad_nombre,
        comunidades.latitud AS comunidad_latitud, comunidades.longitud AS comunidad_longitud,
@@ -228,6 +234,12 @@ export async function listReportes(request, env, url) {
      LEFT JOIN prospectos ON prospectos.id = reportes.prospecto_id
      LEFT JOIN paquetes paquete_interes ON paquete_interes.id = prospectos.paquete_interes_id
      LEFT JOIN instalaciones_fibra ON instalaciones_fibra.reporte_id = reportes.id
+     LEFT JOIN (
+       SELECT reporte_id, MAX(fecha_registro) AS fecha_pendiente_confirmacion
+       FROM reportes_seguimiento
+       WHERE estado = 'PENDIENTE_CONFIRMACION'
+       GROUP BY reporte_id
+     ) seguimiento_confirmacion ON seguimiento_confirmacion.reporte_id = reportes.id
      LEFT JOIN cajas_fibra ON cajas_fibra.id = instalaciones_fibra.caja_id
      LEFT JOIN caja_terminales ON caja_terminales.id = instalaciones_fibra.caja_terminal_id
      LEFT JOIN paquetes paquete_instalacion ON paquete_instalacion.id = instalaciones_fibra.paquete_instalacion_id
@@ -1062,6 +1074,25 @@ export async function insertReporteSeguimiento(env, reporteId, usuarioId, estado
     `INSERT INTO reportes_seguimiento (reporte_id, usuario_id, estado, comentario, fecha_registro)
      VALUES (?, ?, ?, ?, datetime('now'))`
   ).bind(reporteId, usuarioId, estado, comentario).run()
+}
+
+function normalizeConfirmacionFecha(value) {
+  const text = String(value ?? 'hoy').trim().toLowerCase()
+  if (['hoy', 'ayer', 'todas'].includes(text)) return text
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  return 'hoy'
+}
+
+function resolveConfirmacionFecha(value) {
+  if (value === 'ayer') return addDateDays(-1)
+  if (value === 'hoy') return todayDate()
+  return value
+}
+
+function addDateDays(days) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 function normalizeCoords(latitud, longitud) {
