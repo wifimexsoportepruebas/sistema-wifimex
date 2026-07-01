@@ -780,22 +780,16 @@ async function buildQrDownloadImage(cliente, qrDataUrl) {
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, width, height)
 
-  ctx.fillStyle = '#0f172a'
-  ctx.textAlign = 'center'
-  ctx.font = '800 54px Montserrat, Arial, sans-serif'
-  ctx.fillText('WiFiMex', width / 2, 96)
-
-  ctx.fillStyle = '#4274D9'
-  ctx.font = '700 24px Montserrat, Arial, sans-serif'
-  ctx.fillText('Fibra Central', width / 2, 132)
+  await drawQrLogo(ctx, width)
 
   const qrImage = await loadImage(qrDataUrl)
-  ctx.drawImage(qrImage, 220, 178, 360, 360)
+  ctx.drawImage(qrImage, 210, 170, 380, 380)
 
   const nombre = fullName(cliente) || 'Cliente sin nombre'
   ctx.fillStyle = '#0f172a'
   ctx.font = '800 34px Montserrat, Arial, sans-serif'
-  drawCenteredWrappedText(ctx, nombre, width / 2, 596, 680, 40)
+  ctx.textAlign = 'center'
+  drawCenteredWrappedText(ctx, nombre, width / 2, 620, 680, 40)
 
   const details = [
     ['Cliente', cliente.numero_cliente || 'Sin numero'],
@@ -806,21 +800,22 @@ async function buildQrDownloadImage(cliente, qrDataUrl) {
   ]
 
   ctx.textAlign = 'left'
-  let y = 700
+  let y = 720
   for (const [label, value] of details) {
     ctx.fillStyle = '#64748b'
     ctx.font = '700 24px Montserrat, Arial, sans-serif'
     ctx.fillText(`${label}:`, 120, y)
     ctx.fillStyle = '#111827'
     ctx.font = '700 24px Montserrat, Arial, sans-serif'
-    drawLeftWrappedText(ctx, String(value), 250, y, 430, 30)
-    y += 58
+    drawLeftWrappedText(ctx, String(value), 305, y, 375, 30)
+    y += 52
   }
 
   ctx.fillStyle = '#94a3b8'
-  ctx.font = '600 15px Montserrat, Arial, sans-serif'
+  ctx.font = '600 14px Montserrat, Arial, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText(`Referencia QR: ${cliente.qr_token}`, width / 2, 946)
+  ctx.fillText('Referencia QR:', width / 2, 930)
+  ctx.fillText(cliente.qr_token, width / 2, 956)
 
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob((result) => {
@@ -830,6 +825,22 @@ async function buildQrDownloadImage(cliente, qrDataUrl) {
   })
 
   return URL.createObjectURL(blob)
+}
+
+async function drawQrLogo(ctx, width) {
+  try {
+    const logo = await loadImage('/logo-wifimex.png')
+    const maxWidth = 260
+    const ratio = Math.min(maxWidth / logo.width, 110 / logo.height)
+    const drawWidth = logo.width * ratio
+    const drawHeight = logo.height * ratio
+    ctx.drawImage(logo, (width - drawWidth) / 2, 42, drawWidth, drawHeight)
+  } catch {
+    ctx.fillStyle = '#0f172a'
+    ctx.textAlign = 'center'
+    ctx.font = '800 46px Montserrat, Arial, sans-serif'
+    ctx.fillText('WiFiMex', width / 2, 102)
+  }
 }
 
 function loadImage(src) {

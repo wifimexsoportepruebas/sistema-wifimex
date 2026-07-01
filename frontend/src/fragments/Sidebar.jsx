@@ -7,8 +7,8 @@ const menuItems = [
     icon: 'CL',
     roles: ['ATENCION_CLIENTE', 'SOPORTE', 'SOPORTE_FIBRA'],
     submenu: [
-      { label: 'Lista clientes', view: 'clientes-ver', icon: 'LC' },
       { label: 'Prospectos', view: 'prospectos', icon: 'PR' },
+      { label: 'Lista clientes', view: 'clientes-ver', icon: 'LC' },
       { label: 'Alta clientes', view: 'clientes-alta', icon: 'AC' },
     ],
   },

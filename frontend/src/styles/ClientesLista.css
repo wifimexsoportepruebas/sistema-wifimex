@@ -166,7 +166,7 @@
 }
 
 .client-qr-modal {
-  width: min(520px, 100%);
+  width: min(520px, calc(100vw - 24px));
   max-height: 92vh;
 }
 
@@ -220,6 +220,7 @@
   margin: 6px 0;
   color: var(--fiber-text);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .client-qr-info small {
