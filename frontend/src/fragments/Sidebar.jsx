@@ -21,42 +21,24 @@ const menuItems = [
     ],
   },
   {
-    label: 'Infraestructura',
-    icon: 'IF',
+    label: 'Operación técnica',
+    icon: 'OT',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
     submenu: [
-      { label: 'Cajas de fibra', view: 'infraestructura-cajas', icon: 'CF' },
+      { label: 'Cajas de fibra', view: 'infraestructura-cajas', icon: 'CF', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
+      { label: 'Ruta operativa', view: 'reportes-operativos', icon: 'RO', roles: ['ADMIN'] },
+      { label: 'Bitácora de técnicos', view: 'bitacora-tecnicos', icon: 'BT', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
     ],
   },
   {
-    label: 'Ruta operativa',
-    icon: 'RO',
-    view: 'reportes-operativos',
-    roles: ['ADMIN'],
-  },
-  {
-    label: 'Bitácora de técnicos',
-    icon: 'BT',
-    view: 'bitacora-tecnicos',
+    label: 'Administración',
+    icon: 'AD',
     roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
-  },
-  {
-    label: 'Comunidades',
-    icon: 'CM',
-    view: 'comunidades',
-    roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'],
-  },
-  {
-    label: 'Empleados',
-    icon: 'EM',
-    view: 'empleados',
-    roles: ['ADMIN'],
-  },
-  {
-    label: 'Puntos de cobro',
-    icon: 'PC',
-    view: 'puntos-cobro',
-    roles: ['ADMIN'],
+    submenu: [
+      { label: 'Comunidades', view: 'comunidades', icon: 'CM', roles: ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'] },
+      { label: 'Empleados', view: 'empleados', icon: 'EM', roles: ['ADMIN'] },
+      { label: 'Puntos de cobro', view: 'puntos-cobro', icon: 'PC', roles: ['ADMIN'] },
+    ],
   },
   { label: 'Cajas cercanas', icon: 'CC', view: 'cajas-cercanas', roles: ['TECNICO', 'TECNICO_FIBRA'] },
   { label: 'Mis Tareas', icon: 'MA', view: 'tecnico', roles: ['TECNICO', 'TECNICO_FIBRA'] },
@@ -70,7 +52,8 @@ function Sidebar({ open, roles, activeView, homeView = 'dashboard', onNavigate, 
   const [openMenus, setOpenMenus] = useState({
     Clientes: true,
     Reportes: true,
-    Infraestructura: true,
+    'Operación técnica': true,
+    Administración: true,
   })
   const visibleItems = menuItems.filter((item) => canSeeItem(item, roles))
 
@@ -102,7 +85,10 @@ function Sidebar({ open, roles, activeView, homeView = 'dashboard', onNavigate, 
         <nav className="sidebar-menu" aria-label="Menu principal">
           {visibleItems.map((item) => {
             if (item.submenu) {
-              const isChildActive = item.submenu.some((sub) => sub.view === activeView)
+              const visibleSubmenu = item.submenu.filter((sub) => !sub.roles || sub.roles.some((r) => roles.includes(r)))
+              if (visibleSubmenu.length === 0) return null
+
+              const isChildActive = visibleSubmenu.some((sub) => sub.view === activeView)
               const isOpen = openMenus[item.label] ?? true
               return (
                 <div key={item.label} className="sidebar-item-group" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
@@ -120,12 +106,12 @@ function Sidebar({ open, roles, activeView, homeView = 'dashboard', onNavigate, 
                       <strong>{item.label}</strong>
                     </div>
                     <span className="submenu-arrow" style={{ fontSize: '0.75rem', opacity: 0.7, marginRight: '8px' }}>
-                      {isOpen ? '^' : 'v'}
+                      {isOpen ? 'v' : '>'}
                     </span>
                   </a>
                   {isOpen && (
                     <div className="sidebar-submenu">
-                      {item.submenu.map((sub) => (
+                      {visibleSubmenu.map((sub) => (
                         <a
                           className={activeView === sub.view ? 'sub-active' : 'sub-item'}
                           href={`#${sub.view}`}

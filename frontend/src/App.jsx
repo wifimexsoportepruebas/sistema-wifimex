@@ -3,6 +3,8 @@ import Login from './auth/Login.jsx'
 import { clearStoredToken, getStoredToken, saveToken } from './auth/session.js'
 import Dashboard from './pages_fibra/dashboard/Dashboard.jsx'
 import PuntoCobro from './pages_public/PuntoCobro.jsx'
+import LoadingScreen from './fragments/LoadingScreen.jsx'
+
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
 
@@ -85,12 +87,7 @@ function App() {
   }
 
   if (auth.loading) {
-    return (
-      <main className="app-loading">
-        <div className="brand-mark">WM</div>
-        <p>Preparando WiFiMex Central Fibra...</p>
-      </main>
-    )
+    return <LoadingScreen />
   }
 
   if (!auth.token) {
