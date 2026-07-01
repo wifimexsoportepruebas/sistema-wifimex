@@ -30,23 +30,47 @@ export async function getBitacoraTecnicos(request, env, url) {
   const auth = await requireAuth(request, env, ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'])
   if (auth.response) return auth.response
 
-  const fecha = url.searchParams.get('fecha') || todayDate()
+  const fechaInicioParam = url.searchParams.get('fecha_inicio')
+  const fechaFinParam = url.searchParams.get('fecha_fin')
+  const fechaParam = url.searchParams.get('fecha')
   const tecnicoParam = url.searchParams.get('tecnico_id') || 'todos'
   const estadoParam = url.searchParams.get('estado') || 'todos'
+  const comunidadParam = url.searchParams.get('comunidad_id') || 'todos'
+
+  const page = Number(url.searchParams.get('page') ?? 1)
+  const pageSize = Number(url.searchParams.get('page_size') ?? 20)
+  const cleanPage = Math.max(1, page)
+  const cleanPageSize = Math.min(100, Math.max(1, pageSize))
+  const offset = (cleanPage - 1) * cleanPageSize
+
+  let fechaInicio = fechaInicioParam
+  let fechaFin = fechaFinParam
+
+  if (!fechaInicio && !fechaFin) {
+    const fallbackFecha = fechaParam || todayDate()
+    fechaInicio = fallbackFecha
+    fechaFin = fallbackFecha
+  } else {
+    fechaInicio = fechaInicio || fechaFin
+    fechaFin = fechaFin || fechaInicio
+  }
 
   try {
     const { whereEstado, estadoValues } = buildEstadoFilter(estadoParam)
+    
+    const dateExpr = `date(
+      CASE
+        WHEN r.estado IN ('COMPLETADO', 'FINALIZADO', 'CERRADO') THEN COALESCE(r.fecha_completado, cierre.fecha_registro)
+        ELSE COALESCE(cierre.fecha_registro, r.fecha_completado)
+      END
+    )`
+
     const filters = [
       `r.estado IN (${ESTADOS_TERMINADOS.map(() => '?').join(', ')})`,
       'r.tecnico_id IS NOT NULL',
-      `date(
-        CASE
-          WHEN r.estado IN ('COMPLETADO', 'FINALIZADO', 'CERRADO') THEN COALESCE(r.fecha_completado, cierre.fecha_registro)
-          ELSE COALESCE(cierre.fecha_registro, r.fecha_completado)
-        END
-      ) = date(?)`,
+      `${dateExpr} BETWEEN date(?) AND date(?)`
     ]
-    const values = [...ESTADOS_TERMINADOS, fecha]
+    const values = [...ESTADOS_TERMINADOS, fechaInicio, fechaFin]
 
     if (whereEstado) {
       filters.push(whereEstado)
@@ -58,6 +82,52 @@ export async function getBitacoraTecnicos(request, env, url) {
       values.push(Number(tecnicoParam))
     }
 
+    if (comunidadParam !== 'todos') {
+      filters.push('r.comunidad_id = ?')
+      values.push(Number(comunidadParam))
+    }
+
+    // 1. Fetch Totales (without LIMIT)
+    const totals = await env.DB.prepare(
+      `WITH cierre AS (
+         SELECT *
+         FROM (
+           SELECT
+             rs.id,
+             rs.reporte_id,
+             rs.usuario_id,
+             rs.estado,
+             rs.comentario,
+             rs.fecha_registro,
+             ROW_NUMBER() OVER (
+               PARTITION BY rs.reporte_id
+               ORDER BY rs.fecha_registro DESC, rs.id DESC
+             ) AS rn
+           FROM reportes_seguimiento rs
+           WHERE rs.estado IN ('PENDIENTE_CONFIRMACION', 'COMPLETADO', 'FINALIZADO', 'CERRADO')
+         )
+         WHERE rn = 1
+       )
+       SELECT
+         COUNT(r.id) AS total_terminados,
+         SUM(CASE WHEN r.estado = 'PENDIENTE_CONFIRMACION' THEN 1 ELSE 0 END) AS pendientes_confirmacion,
+         SUM(CASE WHEN r.estado IN ('COMPLETADO', 'FINALIZADO', 'CERRADO') THEN 1 ELSE 0 END) AS confirmados,
+         COUNT(DISTINCT r.tecnico_id) AS tecnicos_con_actividad,
+         COALESCE(SUM(COALESCE(inst.contrato_costo_instalacion, 0)), 0) AS total_costo_instalacion
+       FROM reportes r
+       JOIN usuarios t ON t.id = r.tecnico_id
+       JOIN comunidades com ON com.id = r.comunidad_id
+       LEFT JOIN clientes cl ON cl.id = r.cliente_id
+       LEFT JOIN prospectos pr ON pr.id = r.prospecto_id
+       LEFT JOIN instalaciones_fibra inst ON inst.reporte_id = r.id
+       LEFT JOIN cierre ON cierre.reporte_id = r.id
+       WHERE ${filters.join(' AND ')}`
+    ).bind(...values).first()
+
+    const totalTerminados = totals ? Number(totals.total_terminados ?? 0) : 0
+    const totalPages = Math.ceil(totalTerminados / cleanPageSize)
+
+    // 2. Fetch paginated records
     const { results: trabajosRaw } = await env.DB.prepare(
       `WITH cierre AS (
          SELECT *
@@ -152,8 +222,9 @@ export async function getBitacoraTecnicos(request, env, url) {
        LEFT JOIN contratos con ON con.instalacion_fibra_id = inst.id AND con.estado = 'GENERADO'
        LEFT JOIN cierre ON cierre.reporte_id = r.id
        WHERE ${filters.join(' AND ')}
-       ORDER BY tecnico_nombre ASC, fecha_evento ASC, r.id ASC`
-    ).bind(...values).all()
+       ORDER BY tecnico_nombre ASC, fecha_evento ASC, r.id ASC
+       LIMIT ? OFFSET ?`
+    ).bind(...values, cleanPageSize, offset).all()
 
     const trabajos = trabajosRaw ?? []
     const logsByReporte = await getLogsByReporte(env, trabajos.map((item) => item.reporte_id))
@@ -164,7 +235,7 @@ export async function getBitacoraTecnicos(request, env, url) {
       if (!tecnicosMap.has(tecnicoId)) {
         tecnicosMap.set(tecnicoId, {
           tecnico_id: tecnicoId,
-          tecnico_nombre: row.tecnico_nombre || 'Tecnico sin nombre',
+          tecnico_nombre: row.tecnico_nombre || 'Técnico sin nombre',
           resumen: {
             total_terminados: 0,
             pendientes_confirmacion: 0,
@@ -184,52 +255,35 @@ export async function getBitacoraTecnicos(request, env, url) {
       tecnico.resumen.total_costo_instalacion += trabajo.contrato_costo_instalacion
     }
 
-    if (tecnicoParam !== 'todos' && tecnicosMap.size === 0) {
-      const tecnico = await getTecnicoById(env, Number(tecnicoParam))
-      if (tecnico) {
-        tecnicosMap.set(Number(tecnicoParam), {
-          tecnico_id: Number(tecnicoParam),
-          tecnico_nombre: tecnico.nombre_completo,
-          resumen: {
-            total_terminados: 0,
-            pendientes_confirmacion: 0,
-            confirmados: 0,
-            total_costo_instalacion: 0,
-          },
-          trabajos: [],
-        })
-      }
-    }
-
     const tecnicos = Array.from(tecnicosMap.values()).map((tecnico) => ({
       ...tecnico,
       trabajos: tecnico.trabajos.sort((a, b) => String(a.fecha_evento || '').localeCompare(String(b.fecha_evento || ''))),
     }))
 
-    const resumen = tecnicos.reduce((acc, tecnico) => {
-      acc.total_terminados += tecnico.resumen.total_terminados
-      acc.pendientes_confirmacion += tecnico.resumen.pendientes_confirmacion
-      acc.confirmados += tecnico.resumen.confirmados
-      acc.total_costo_instalacion += tecnico.resumen.total_costo_instalacion
-      if (tecnico.resumen.total_terminados > 0) acc.tecnicos_con_actividad += 1
-      return acc
-    }, {
-      total_terminados: 0,
-      pendientes_confirmacion: 0,
-      confirmados: 0,
-      tecnicos_con_actividad: 0,
-      total_costo_instalacion: 0,
-    })
+    const resumen = {
+      total_terminados: totalTerminados,
+      pendientes_confirmacion: totals ? Number(totals.pendientes_confirmacion ?? 0) : 0,
+      confirmados: totals ? Number(totals.confirmados ?? 0) : 0,
+      tecnicos_con_actividad: totals ? Number(totals.tecnicos_con_actividad ?? 0) : 0,
+      total_costo_instalacion: totals ? Number(totals.total_costo_instalacion ?? 0) : 0
+    }
 
     return json({
       ok: true,
-      fecha,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin,
       estado: estadoParam,
       resumen,
       tecnicos,
+      pagination: {
+        page: cleanPage,
+        page_size: cleanPageSize,
+        total_items: totalTerminados,
+        total_pages: totalPages
+      }
     })
   } catch (error) {
-    return json({ ok: false, error: error.message || 'Error al obtener bitacora' }, 500)
+    return json({ ok: false, error: error.message || 'Error al obtener bitácora' }, 500)
   }
 }
 

@@ -448,3 +448,42 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Quincena and Pagination Premium Styles */
+
+.periodo-selector-row {
+  margin-bottom: 4px;
+}
+
+.fiber-tab-button {
+  background: var(--fiber-white);
+  border: 1px solid var(--fiber-border);
+  cursor: pointer;
+  font-weight: 750;
+  transition: all 0.2s ease-in-out;
+}
+
+.fiber-tab-button:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.fiber-tab-button.active {
+  background: var(--fiber-primary) !important;
+  color: var(--fiber-white) !important;
+  border-color: var(--fiber-primary) !important;
+}
+
+.bitacora-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .bitacora-pagination {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 12px;
+  }
+}
+
