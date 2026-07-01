@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import Login from './auth/Login.jsx'
 import { clearStoredToken, getStoredToken, saveToken } from './auth/session.js'
 import Dashboard from './pages_fibra/dashboard/Dashboard.jsx'
+import PuntoCobro from './pages_public/PuntoCobro.jsx'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
 
 function App() {
+  const puntoCobroToken = getPuntoCobroToken()
   const [auth, setAuth] = useState({
     loading: true,
     token: getStoredToken(),
@@ -15,6 +17,11 @@ function App() {
 
   useEffect(() => {
     async function loadSession() {
+      if (puntoCobroToken) {
+        setAuth((current) => ({ ...current, loading: false }))
+        return
+      }
+
       if (!auth.token) {
         setAuth((current) => ({ ...current, loading: false }))
         return
@@ -45,7 +52,11 @@ function App() {
     }
 
     loadSession()
-  }, [auth.token])
+  }, [auth.token, puntoCobroToken])
+
+  if (puntoCobroToken) {
+    return <PuntoCobro apiUrl={API_URL} token={puntoCobroToken} />
+  }
 
   function handleLogin(session, storageType = 'local') {
     saveToken(session.token, storageType)
@@ -95,6 +106,11 @@ function App() {
       onLogout={handleLogout}
     />
   )
+}
+
+function getPuntoCobroToken() {
+  const match = window.location.pathname.match(/^\/punto-cobro\/([^/]+)\/?$/)
+  return match ? decodeURIComponent(match[1]) : ''
 }
 
 function getDashboardHash(roles) {

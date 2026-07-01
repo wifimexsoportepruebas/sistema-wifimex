@@ -13,6 +13,7 @@ import Prospectos from '../prospectos/Prospectos.jsx'
 import CajasCercanas from '../tecnico/CajasCercanas.jsx'
 import BitacoraTecnicos from '../soporte/BitacoraTecnicos.jsx'
 import Comunidades from '../comunidades/Comunidades.jsx'
+import PuntosCobroAdmin from '../admin/PuntosCobroAdmin.jsx'
 
 const roleProfiles = {
   ADMIN: { label: 'Administracion' },
@@ -107,6 +108,10 @@ function Dashboard({ apiUrl, token, usuario, roles, onLogout }) {
         ) : activeView === 'empleados' ? (
           <div className="dashboard-content">
             {primaryRole === 'ADMIN' ? <Empleados apiUrl={apiUrl} token={token} /> : <AccessDenied title="Empleados" />}
+          </div>
+        ) : activeView === 'puntos-cobro' ? (
+          <div className="dashboard-content">
+            {roles.includes('ADMIN') ? <PuntosCobroAdmin apiUrl={apiUrl} token={token} /> : <AccessDenied title="Puntos de cobro" />}
           </div>
         ) : activeView === 'infraestructura-cajas' ? (
           <div className="dashboard-content">

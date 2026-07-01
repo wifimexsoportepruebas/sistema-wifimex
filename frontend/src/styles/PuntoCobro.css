@@ -1,0 +1,273 @@
+.punto-cobro-page {
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(66, 116, 217, 0.16), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, var(--fiber-bg-soft) 100%);
+  color: var(--fiber-text);
+  font-family: var(--font-main);
+}
+
+.punto-cobro-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+.punto-cobro-hero,
+.punto-cobro-card,
+.punto-cobro-access,
+.punto-cobro-loading,
+.punto-cobro-summary article {
+  border: 1px solid var(--fiber-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--fiber-shadow);
+}
+
+.punto-cobro-hero,
+.punto-cobro-card,
+.punto-cobro-access,
+.punto-cobro-loading {
+  padding: 22px;
+}
+
+.punto-cobro-hero span,
+.punto-cobro-card-head span,
+.cliente-pago-header span {
+  color: var(--fiber-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.punto-cobro-hero h1,
+.punto-cobro-card h2,
+.punto-cobro-access h1 {
+  margin: 6px 0;
+  color: var(--fiber-black);
+}
+
+.punto-cobro-hero p,
+.punto-cobro-card p,
+.punto-cobro-access p {
+  margin: 0;
+  color: var(--fiber-muted);
+  font-weight: 600;
+}
+
+.punto-cobro-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.punto-cobro-summary article {
+  padding: 18px;
+}
+
+.punto-cobro-summary span,
+.cliente-pago-info span {
+  color: var(--fiber-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.punto-cobro-summary strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--fiber-primary-dark);
+  font-size: 2rem;
+}
+
+.punto-cobro-summary p {
+  margin: 2px 0 0;
+  color: var(--fiber-text);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.punto-cobro-card-head {
+  margin-bottom: 14px;
+}
+
+.punto-cobro-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.punto-cobro-search input {
+  min-height: 48px;
+  width: 100%;
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  padding: 0 14px;
+  color: var(--fiber-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.punto-cobro-search button,
+.punto-cobro-pay-button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 18px;
+  background: var(--fiber-primary);
+  color: var(--fiber-white);
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.punto-cobro-search button:disabled,
+.punto-cobro-pay-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.cliente-pago-card {
+  display: grid;
+  gap: 16px;
+}
+
+.cliente-pago-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cliente-pago-header h2 {
+  margin: 4px 0;
+}
+
+.paid-badge,
+.pending-badge {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+}
+
+.paid-badge {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.pending-badge {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.cliente-pago-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cliente-pago-info,
+.pago-existing,
+.punto-cobro-cycle {
+  border: 1px solid var(--fiber-border);
+  border-radius: 10px;
+  background: rgba(149, 204, 221, 0.12);
+}
+
+.cliente-pago-info {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.cliente-pago-info strong {
+  color: var(--fiber-black);
+  overflow-wrap: anywhere;
+}
+
+.pago-existing {
+  padding: 14px;
+}
+
+.pago-existing strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--fiber-primary-dark);
+}
+
+.pago-existing p {
+  margin: 4px 0;
+  color: var(--fiber-text);
+}
+
+.punto-cobro-pay-button {
+  width: fit-content;
+}
+
+.punto-cobro-cycles {
+  display: grid;
+  gap: 8px;
+}
+
+.punto-cobro-cycle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.punto-cobro-cycle strong {
+  color: var(--fiber-primary-dark);
+}
+
+.punto-cobro-cycle span {
+  color: var(--fiber-muted);
+  font-weight: 800;
+}
+
+.punto-cobro-cycle b {
+  color: var(--fiber-black);
+}
+
+.punto-cobro-access,
+.punto-cobro-loading {
+  width: min(560px, 100%);
+  margin: 80px auto 0;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .punto-cobro-page {
+    padding: 14px;
+  }
+
+  .punto-cobro-hero,
+  .punto-cobro-card,
+  .punto-cobro-access,
+  .punto-cobro-loading {
+    padding: 18px;
+  }
+
+  .punto-cobro-summary,
+  .punto-cobro-search,
+  .cliente-pago-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cliente-pago-header {
+    display: grid;
+  }
+
+  .punto-cobro-search button,
+  .punto-cobro-pay-button {
+    width: 100%;
+  }
+
+  .punto-cobro-cycle {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

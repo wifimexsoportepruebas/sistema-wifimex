@@ -11,6 +11,8 @@ import { handleCajasCercanasRoutes } from './routes/cajas-cercanas.routes.js'
 import { handleBitacoraTecnicosRoutes } from './routes/bitacora-tecnicos.routes.js'
 import { handleComunidadesAdminRoutes } from './routes/comunidades-admin.routes.js'
 import { handleComunidadesResumenRoute } from './routes/comunidades-resumen.routes.js'
+import { handlePuntosCobroPublicRoutes } from './routes/puntos-cobro-public.routes.js'
+import { handlePuntosCobroAdminRoutes } from './routes/puntos-cobro-admin.routes.js'
 import { corsHeaders, withCors } from './utils/cors.js'
 import { json } from './utils/response.js'
 
@@ -25,6 +27,14 @@ export default {
     try {
       if (url.pathname.startsWith('/api/auth') || url.pathname === '/api/login' || url.pathname === '/api/me' || url.pathname === '/api/logout') {
         return withCors(await handleAuthRoutes(request, env, url))
+      }
+
+      if (url.pathname.startsWith('/api/punto-cobro')) {
+        return withCors(await handlePuntosCobroPublicRoutes(request, env, url))
+      }
+
+      if (url.pathname.startsWith('/api/admin/puntos-cobro')) {
+        return withCors(await handlePuntosCobroAdminRoutes(request, env, url))
       }
 
       if (url.pathname === '/api/comunidades-resumen') {
