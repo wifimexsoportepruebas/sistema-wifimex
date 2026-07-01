@@ -1,352 +1,382 @@
 import { requireAuth } from '../utils/auth.js'
 import { json } from '../utils/response.js'
 
+const ESTADOS_TERMINADOS = ['PENDIENTE_CONFIRMACION', 'COMPLETADO', 'FINALIZADO', 'CERRADO']
+const ESTADOS_CONFIRMADOS = ['COMPLETADO', 'FINALIZADO', 'CERRADO']
+
 export async function getListaTecnicos(request, env) {
-  // Validate that user is ADMIN, SOPORTE, or SOPORTE_FIBRA
   const auth = await requireAuth(request, env, ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'])
   if (auth.response) return auth.response
 
   try {
     const { results } = await env.DB.prepare(
-      `SELECT DISTINCT u.id, u.nombres || ' ' || COALESCE(u.apellido_paterno, '') || ' ' || COALESCE(u.apellido_materno, '') AS nombre_completo
+      `SELECT DISTINCT
+         u.id,
+         trim(u.nombres || ' ' || COALESCE(u.apellido_paterno, '') || ' ' || COALESCE(u.apellido_materno, '')) AS nombre_completo
        FROM usuarios u
        JOIN usuario_roles ur ON ur.usuario_id = u.id
        JOIN roles r ON r.id = ur.rol_id
        WHERE r.nombre IN ('TECNICO', 'TECNICO_FIBRA') AND u.activo = 1
-       ORDER BY u.nombres`
+       ORDER BY u.nombres ASC, u.apellido_paterno ASC`
     ).all()
 
-    return json({ ok: true, usuarios: results || [] })
+    return json({ ok: true, usuarios: results ?? [] })
   } catch (error) {
-    return json({ ok: false, error: error.message || 'Error al obtener técnicos' }, 500)
+    return json({ ok: false, error: error.message || 'Error al obtener tecnicos' }, 500)
   }
-}
-
-function isRescheduled(text) {
-  if (!text) return false
-  const t = String(text).toUpperCase()
-  return t.includes('REAGEND') || t.includes('RESTABLEC') || t.includes('REASIGN')
-}
-
-function extractTime(dateStr) {
-  if (!dateStr || dateStr.length < 16) return 'N/A'
-  // Date format: YYYY-MM-DD HH:MM:SS
-  return dateStr.slice(11, 16)
 }
 
 export async function getBitacoraTecnicos(request, env, url) {
   const auth = await requireAuth(request, env, ['ADMIN', 'SOPORTE', 'SOPORTE_FIBRA'])
   if (auth.response) return auth.response
 
-  const fecha = url.searchParams.get('fecha') || new Date().toISOString().slice(0, 10)
+  const fecha = url.searchParams.get('fecha') || todayDate()
   const tecnicoParam = url.searchParams.get('tecnico_id') || 'todos'
+  const estadoParam = url.searchParams.get('estado') || 'todos'
 
   try {
-    // 1. Fetch reports with active transitions on selected date
-    const reportsQuery = `
-      SELECT 
-        r.id AS reporte_id,
-        r.tipo_reporte,
-        r.estado AS reporte_estado,
-        r.origen AS reporte_origen,
-        r.comentario AS reporte_comentario,
-        r.prioridad AS reporte_prioridad,
-        r.fecha_reportada,
-        r.fecha_asignacion,
-        r.fecha_programada,
-        r.fecha_completado,
-        r.comentario_cierre,
-        r.tecnico_id,
-        t.nombres || ' ' || COALESCE(t.apellido_paterno, '') || ' ' || COALESCE(t.apellido_materno, '') AS tecnico_nombre,
-        com.nombre AS comunidad_nombre,
-        r.cliente_id,
-        cl.nombres || ' ' || COALESCE(cl.apellido_paterno, '') || ' ' || COALESCE(cl.apellido_materno, '') AS cliente_nombre,
-        cl.telefono AS cliente_telefono,
-        cl.direccion AS cliente_direccion,
-        r.prospecto_id,
-        pr.nombres || ' ' || COALESCE(pr.apellido_paterno, '') || ' ' || COALESCE(pr.apellido_materno, '') AS prospecto_nombre,
-        pr.telefono AS prospecto_telefono,
-        pr.direccion AS prospecto_direccion,
-        inst.puerto AS inst_caja,
-        inst.terminal AS inst_terminal,
-        inst.potencia AS inst_potencia,
-        inst.fibra_optica_metros AS inst_metros,
-        p.nombre AS paquete_nombre,
-        con.id AS contrato_id,
-        con.numero_contrato AS contrato_numero
-      FROM reportes r
-      LEFT JOIN usuarios t ON t.id = r.tecnico_id
-      LEFT JOIN comunidades com ON com.id = r.comunidad_id
-      LEFT JOIN clientes cl ON cl.id = r.cliente_id
-      LEFT JOIN prospectos pr ON pr.id = r.prospecto_id
-      LEFT JOIN instalaciones_fibra inst ON inst.reporte_id = r.id
-      LEFT JOIN paquetes p ON p.id = inst.paquete_instalacion_id
-      LEFT JOIN contratos con ON con.instalacion_fibra_id = inst.id AND con.estado = 'GENERADO'
-      WHERE r.id IN (
-        SELECT DISTINCT r2.id
-        FROM reportes r2
-        LEFT JOIN reportes_seguimiento rs2 ON rs2.reporte_id = r2.id
-        WHERE (
-          date(r2.fecha_reportada) = date(?)
-          OR date(r2.fecha_asignacion) = date(?)
-          OR date(r2.fecha_completado) = date(?)
-          OR (rs2.id IS NOT NULL AND date(rs2.fecha_registro) = date(?))
-        )
-      )
-      ${tecnicoParam !== 'todos' ? 'AND r.tecnico_id = ?' : ''}
-    `
+    const { whereEstado, estadoValues } = buildEstadoFilter(estadoParam)
+    const filters = [
+      `r.estado IN (${ESTADOS_TERMINADOS.map(() => '?').join(', ')})`,
+      'r.tecnico_id IS NOT NULL',
+      `date(
+        CASE
+          WHEN r.estado IN ('COMPLETADO', 'FINALIZADO', 'CERRADO') THEN COALESCE(r.fecha_completado, cierre.fecha_registro)
+          ELSE COALESCE(cierre.fecha_registro, r.fecha_completado)
+        END
+      ) = date(?)`,
+    ]
+    const values = [...ESTADOS_TERMINADOS, fecha]
 
-    const params = [fecha, fecha, fecha, fecha]
-    if (tecnicoParam !== 'todos') {
-      params.push(Number(tecnicoParam))
+    if (whereEstado) {
+      filters.push(whereEstado)
+      values.push(...estadoValues)
     }
 
-    const { results: reports } = await env.DB.prepare(reportsQuery).bind(...params).all()
+    if (tecnicoParam !== 'todos') {
+      filters.push('r.tecnico_id = ?')
+      values.push(Number(tecnicoParam))
+    }
 
-    // 2. Fetch tracking logs on that date
-    const logsQuery = `
-      SELECT 
-        rs.id AS seguimiento_id,
-        rs.reporte_id,
-        rs.usuario_id AS actor_id,
-        u.nombres || ' ' || COALESCE(u.apellido_paterno, '') || ' ' || COALESCE(u.apellido_materno, '') AS actor_nombre,
-        rs.estado AS evento_estado,
-        rs.comentario AS evento_comentario,
-        rs.fecha_registro AS evento_fecha
-      FROM reportes_seguimiento rs
-      JOIN usuarios u ON u.id = rs.usuario_id
-      WHERE rs.reporte_id IN (
-        SELECT DISTINCT r2.id
-        FROM reportes r2
-        LEFT JOIN reportes_seguimiento rs2 ON rs2.reporte_id = r2.id
-        WHERE (
-          date(r2.fecha_reportada) = date(?)
-          OR date(r2.fecha_asignacion) = date(?)
-          OR date(r2.fecha_completado) = date(?)
-          OR (rs2.id IS NOT NULL AND date(rs2.fecha_registro) = date(?))
-        )
-      )
-      AND date(rs.fecha_registro) = date(?)
-      ORDER BY rs.fecha_registro ASC
-    `
-    const logParams = [fecha, fecha, fecha, fecha, fecha]
-    const { results: logs } = await env.DB.prepare(logsQuery).bind(...logParams).all()
+    const { results: trabajosRaw } = await env.DB.prepare(
+      `WITH cierre AS (
+         SELECT *
+         FROM (
+           SELECT
+             rs.id,
+             rs.reporte_id,
+             rs.usuario_id,
+             rs.estado,
+             rs.comentario,
+             rs.fecha_registro,
+             ROW_NUMBER() OVER (
+               PARTITION BY rs.reporte_id
+               ORDER BY rs.fecha_registro DESC, rs.id DESC
+             ) AS rn
+           FROM reportes_seguimiento rs
+           WHERE rs.estado IN ('PENDIENTE_CONFIRMACION', 'COMPLETADO', 'FINALIZADO', 'CERRADO')
+         )
+         WHERE rn = 1
+       )
+       SELECT
+         r.id AS reporte_id,
+         r.tipo_reporte,
+         COALESCE(r.origen, 'PROSPECTO') AS origen,
+         r.estado,
+         r.comentario,
+         r.prioridad,
+         r.fecha_reportada,
+         r.fecha_asignacion,
+         r.fecha_programada,
+         r.fecha_completado,
+         r.comentario_cierre,
+         r.tecnico_id,
+         trim(t.nombres || ' ' || COALESCE(t.apellido_paterno, '') || ' ' || COALESCE(t.apellido_materno, '')) AS tecnico_nombre,
+         com.id AS comunidad_id,
+         com.nombre AS comunidad_nombre,
+         r.cliente_id,
+         cl.numero_cliente,
+         trim(cl.nombres || ' ' || COALESCE(cl.apellido_paterno, '') || ' ' || COALESCE(cl.apellido_materno, '')) AS cliente_nombre,
+         cl.telefono AS cliente_telefono,
+         cl.direccion AS cliente_direccion,
+         r.prospecto_id,
+         trim(pr.nombres || ' ' || COALESCE(pr.apellido_paterno, '') || ' ' || COALESCE(pr.apellido_materno, '')) AS prospecto_nombre,
+         pr.telefono AS prospecto_telefono,
+         pr.direccion AS prospecto_direccion,
+         pr.referencia AS prospecto_referencia,
+         inst.id AS instalacion_fibra_id,
+         inst.fecha_instalacion,
+         inst.fibra_optica_metros,
+         inst.tensor_gancho,
+         inst.argollas,
+         inst.taquetes,
+         inst.sujetadores,
+         inst.roseta,
+         inst.terminal,
+         inst.puerto,
+         inst.potencia,
+         inst.alfanumerico_equipo,
+         inst.comentario_tecnico,
+         inst.titular_nombres,
+         inst.titular_apellido_paterno,
+         inst.titular_apellido_materno,
+         inst.titular_telefono,
+         inst.titular_direccion,
+         cajas.id AS caja_id,
+         cajas.codigo_caja,
+         cajas.nombre AS caja_nombre,
+         ct.id AS caja_terminal_id,
+         ct.numero_terminal AS caja_terminal_numero,
+         paquete.nombre AS paquete_nombre,
+         con.id AS contrato_id,
+         con.numero_contrato AS contrato_numero,
+         cierre.id AS cierre_seguimiento_id,
+         cierre.usuario_id AS cierre_usuario_id,
+         cierre.estado AS cierre_estado,
+         cierre.comentario AS cierre_comentario,
+         cierre.fecha_registro AS cierre_fecha,
+         CASE
+           WHEN r.estado IN ('COMPLETADO', 'FINALIZADO', 'CERRADO') THEN COALESCE(r.fecha_completado, cierre.fecha_registro)
+           ELSE COALESCE(cierre.fecha_registro, r.fecha_completado)
+         END AS fecha_evento
+       FROM reportes r
+       JOIN usuarios t ON t.id = r.tecnico_id
+       JOIN comunidades com ON com.id = r.comunidad_id
+       LEFT JOIN clientes cl ON cl.id = r.cliente_id
+       LEFT JOIN prospectos pr ON pr.id = r.prospecto_id
+       LEFT JOIN instalaciones_fibra inst ON inst.reporte_id = r.id
+       LEFT JOIN cajas_fibra cajas ON cajas.id = inst.caja_id
+       LEFT JOIN caja_terminales ct ON ct.id = inst.caja_terminal_id
+       LEFT JOIN paquetes paquete ON paquete.id = inst.paquete_instalacion_id
+       LEFT JOIN contratos con ON con.instalacion_fibra_id = inst.id AND con.estado = 'GENERADO'
+       LEFT JOIN cierre ON cierre.reporte_id = r.id
+       WHERE ${filters.join(' AND ')}
+       ORDER BY tecnico_nombre ASC, fecha_evento ASC, r.id ASC`
+    ).bind(...values).all()
 
+    const trabajos = trabajosRaw ?? []
+    const logsByReporte = await getLogsByReporte(env, trabajos.map((item) => item.reporte_id))
     const tecnicosMap = new Map()
 
-    for (const r of (reports || [])) {
-      const tecnicoId = r.tecnico_id || 0
-      const tecnicoNombre = r.tecnico_id ? r.tecnico_nombre : 'Sin Asignar'
-
-      // Filter by selected technician if requested (in case tecnico_id is 0 but we want specific)
-      if (tecnicoParam !== 'todos' && Number(tecnicoParam) !== tecnicoId) {
-        continue
-      }
-
+    for (const row of trabajos) {
+      const tecnicoId = Number(row.tecnico_id)
       if (!tecnicosMap.has(tecnicoId)) {
         tecnicosMap.set(tecnicoId, {
           tecnico_id: tecnicoId,
-          tecnico_nombre: tecnicoNombre,
-          actividades: [],
+          tecnico_nombre: row.tecnico_nombre || 'Tecnico sin nombre',
           resumen: {
-            total: 0,
-            completadas: 0,
+            total_terminados: 0,
             pendientes_confirmacion: 0,
-            en_proceso: 0,
-            reagendadas: 0
-          }
+            confirmados: 0,
+          },
+          trabajos: [],
         })
       }
 
-      const tObj = tecnicosMap.get(tecnicoId)
-      const rLogs = (logs || []).filter(l => l.reporte_id === r.reporte_id)
-
-      const events = []
-
-      // Add real logs
-      for (const log of rLogs) {
-        let descripcion = log.evento_comentario
-        if (log.evento_estado === 'PENDIENTE_CONFIRMACION') {
-          descripcion = 'Técnico envió a confirmación' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        } else if (log.evento_estado === 'COMPLETADO') {
-          descripcion = 'Confirmado por soporte (Completado)' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        } else if (log.evento_estado === 'EN_PROCESO') {
-          descripcion = 'Técnico inició el reporte' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        } else if (log.evento_estado === 'ASIGNADO') {
-          descripcion = 'Reporte asignado al técnico' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        } else if (log.evento_estado === 'CANCELADO') {
-          descripcion = 'Reporte cancelado' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        } else if (log.evento_estado === 'NO_LOCALIZADO') {
-          descripcion = 'Técnico reportó cliente no localizado' + (log.evento_comentario ? ` - ${log.evento_comentario}` : '')
-        }
-
-        events.push({
-          seguimiento_id: log.seguimiento_id,
-          reporte_id: r.reporte_id,
-          hora: extractTime(log.evento_fecha),
-          raw_fecha: log.evento_fecha,
-          tipo: r.tipo_reporte,
-          estado: log.evento_estado,
-          actor: log.actor_nombre,
-          descripcion,
-          cliente: r.cliente_nombre || r.prospecto_nombre || 'N/A',
-          telefono: r.cliente_telefono || r.prospecto_telefono || 'N/A',
-          direccion: r.cliente_direccion || r.prospecto_direccion || 'N/A',
-          comunidad: r.comunidad_nombre || 'N/A',
-          caja: r.inst_caja || null,
-          terminal: r.inst_terminal || null,
-          potencia: r.inst_potencia || null,
-          metros: r.inst_metros || null,
-          paquete: r.paquete_nombre || null,
-          contrato_id: r.contrato_id || null,
-          contrato_numero: r.contrato_numero || null,
-          origen: r.reporte_origen,
-          observaciones: r.reporte_comentario || 'N/A'
-        })
-      }
-
-      // If no logs, synthesize events based on dates
-      if (events.length === 0) {
-        if (r.fecha_completado && r.fecha_completado.startsWith(fecha)) {
-          events.push({
-            reporte_id: r.reporte_id,
-            hora: extractTime(r.fecha_completado),
-            raw_fecha: r.fecha_completado,
-            tipo: r.tipo_reporte,
-            estado: 'COMPLETADO',
-            actor: 'Sistema',
-            descripcion: 'Confirmado por soporte (Completado)' + (r.comentario_cierre ? ` - ${r.comentario_cierre}` : ''),
-            cliente: r.cliente_nombre || r.prospecto_nombre || 'N/A',
-            telefono: r.cliente_telefono || r.prospecto_telefono || 'N/A',
-            direccion: r.cliente_direccion || r.prospecto_direccion || 'N/A',
-            comunidad: r.comunidad_nombre || 'N/A',
-            caja: r.inst_caja || null,
-            terminal: r.inst_terminal || null,
-            potencia: r.inst_potencia || null,
-            metros: r.inst_metros || null,
-            paquete: r.paquete_nombre || null,
-            contrato_id: r.contrato_id || null,
-            contrato_numero: r.contrato_numero || null,
-            origen: r.reporte_origen,
-            observaciones: r.reporte_comentario || 'N/A'
-          })
-        } else if (r.fecha_asignacion && r.fecha_asignacion.startsWith(fecha)) {
-          events.push({
-            reporte_id: r.reporte_id,
-            hora: extractTime(r.fecha_asignacion),
-            raw_fecha: r.fecha_asignacion,
-            tipo: r.tipo_reporte,
-            estado: 'ASIGNADO',
-            actor: 'Sistema',
-            descripcion: 'Reporte asignado al técnico',
-            cliente: r.cliente_nombre || r.prospecto_nombre || 'N/A',
-            telefono: r.cliente_telefono || r.prospecto_telefono || 'N/A',
-            direccion: r.cliente_direccion || r.prospecto_direccion || 'N/A',
-            comunidad: r.comunidad_nombre || 'N/A',
-            caja: r.inst_caja || null,
-            terminal: r.inst_terminal || null,
-            potencia: r.inst_potencia || null,
-            metros: r.inst_metros || null,
-            paquete: r.paquete_nombre || null,
-            contrato_id: r.contrato_id || null,
-            contrato_numero: r.contrato_numero || null,
-            origen: r.reporte_origen,
-            observaciones: r.reporte_comentario || 'N/A'
-          })
-        } else if (r.fecha_reportada && r.fecha_reportada.startsWith(fecha)) {
-          events.push({
-            reporte_id: r.reporte_id,
-            hora: extractTime(r.fecha_reportada),
-            raw_fecha: r.fecha_reportada,
-            tipo: r.tipo_reporte,
-            estado: 'PENDIENTE',
-            actor: 'Sistema',
-            descripcion: 'Reporte creado en el sistema',
-            cliente: r.cliente_nombre || r.prospecto_nombre || 'N/A',
-            telefono: r.cliente_telefono || r.prospecto_telefono || 'N/A',
-            direccion: r.cliente_direccion || r.prospecto_direccion || 'N/A',
-            comunidad: r.comunidad_nombre || 'N/A',
-            caja: r.inst_caja || null,
-            terminal: r.inst_terminal || null,
-            potencia: r.inst_potencia || null,
-            metros: r.inst_metros || null,
-            paquete: r.paquete_nombre || null,
-            contrato_id: r.contrato_id || null,
-            contrato_numero: r.contrato_numero || null,
-            origen: r.reporte_origen,
-            observaciones: r.reporte_comentario || 'N/A'
-          })
-        }
-      }
-
-      tObj.actividades.push(...events)
+      const trabajo = buildTrabajo(row, logsByReporte.get(row.reporte_id) ?? [])
+      const tecnico = tecnicosMap.get(tecnicoId)
+      tecnico.trabajos.push(trabajo)
+      tecnico.resumen.total_terminados += 1
+      if (row.estado === 'PENDIENTE_CONFIRMACION') tecnico.resumen.pendientes_confirmacion += 1
+      if (ESTADOS_CONFIRMADOS.includes(row.estado)) tecnico.resumen.confirmados += 1
     }
 
-    // Force add selected technician with empty state if filtered and not present
-    if (tecnicoParam !== 'todos' && !tecnicosMap.has(Number(tecnicoParam))) {
-      const techUser = await env.DB.prepare(
-        `SELECT nombres || ' ' || COALESCE(apellido_paterno, '') || ' ' || COALESCE(apellido_materno, '') AS name 
-         FROM usuarios WHERE id = ?`
-      ).bind(Number(tecnicoParam)).first()
-
-      if (techUser) {
+    if (tecnicoParam !== 'todos' && tecnicosMap.size === 0) {
+      const tecnico = await getTecnicoById(env, Number(tecnicoParam))
+      if (tecnico) {
         tecnicosMap.set(Number(tecnicoParam), {
           tecnico_id: Number(tecnicoParam),
-          tecnico_nombre: techUser.name,
-          actividades: [],
-          resumen: { total: 0, completadas: 0, pendientes_confirmacion: 0, en_proceso: 0, reagendadas: 0 }
+          tecnico_nombre: tecnico.nombre_completo,
+          resumen: {
+            total_terminados: 0,
+            pendientes_confirmacion: 0,
+            confirmados: 0,
+          },
+          trabajos: [],
         })
       }
     }
 
-    // Calculate summaries and sort chronologically
-    const globalResumen = {
-      total_actividades: 0,
-      completadas: 0,
+    const tecnicos = Array.from(tecnicosMap.values()).map((tecnico) => ({
+      ...tecnico,
+      trabajos: tecnico.trabajos.sort((a, b) => String(a.fecha_evento || '').localeCompare(String(b.fecha_evento || ''))),
+    }))
+
+    const resumen = tecnicos.reduce((acc, tecnico) => {
+      acc.total_terminados += tecnico.resumen.total_terminados
+      acc.pendientes_confirmacion += tecnico.resumen.pendientes_confirmacion
+      acc.confirmados += tecnico.resumen.confirmados
+      if (tecnico.resumen.total_terminados > 0) acc.tecnicos_con_actividad += 1
+      return acc
+    }, {
+      total_terminados: 0,
       pendientes_confirmacion: 0,
-      en_proceso: 0,
-      reagendadas: 0
-    }
-
-    for (const tObj of tecnicosMap.values()) {
-      tObj.actividades.sort((a, b) => (a.raw_fecha || '').localeCompare(b.raw_fecha || ''))
-
-      const reportIds = new Set(tObj.actividades.map(a => a.reporte_id))
-      tObj.resumen.total = reportIds.size
-
-      const completed = new Set()
-      const pendingConf = new Set()
-      const inProcess = new Set()
-      const rescheduled = new Set()
-
-      for (const act of tObj.actividades) {
-        if (act.estado === 'COMPLETADO') completed.add(act.reporte_id)
-        if (act.estado === 'PENDIENTE_CONFIRMACION') pendingConf.add(act.reporte_id)
-        if (act.estado === 'EN_PROCESO') inProcess.add(act.reporte_id)
-        if (isRescheduled(act.descripcion) || isRescheduled(act.observaciones)) {
-          rescheduled.add(act.reporte_id)
-        }
-      }
-
-      tObj.resumen.completadas = completed.size
-      tObj.resumen.pendientes_confirmacion = pendingConf.size
-      tObj.resumen.en_proceso = inProcess.size
-      tObj.resumen.reagendadas = rescheduled.size
-
-      globalResumen.total_actividades += tObj.resumen.total
-      globalResumen.completadas += tObj.resumen.completadas
-      globalResumen.pendientes_confirmacion += tObj.resumen.pendientes_confirmacion
-      globalResumen.en_proceso += tObj.resumen.en_proceso
-      globalResumen.reagendadas += tObj.resumen.reagendadas
-    }
+      confirmados: 0,
+      tecnicos_con_actividad: 0,
+    })
 
     return json({
       ok: true,
       fecha,
-      resumen: globalResumen,
-      tecnicos: Array.from(tecnicosMap.values())
+      estado: estadoParam,
+      resumen,
+      tecnicos,
     })
   } catch (error) {
-    return json({ ok: false, error: error.message || 'Error al obtener bitácora' }, 500)
+    return json({ ok: false, error: error.message || 'Error al obtener bitacora' }, 500)
   }
+}
+
+function buildEstadoFilter(estadoParam) {
+  if (estadoParam === 'pendientes_confirmacion') {
+    return { whereEstado: "r.estado = 'PENDIENTE_CONFIRMACION'", estadoValues: [] }
+  }
+  if (estadoParam === 'confirmados') {
+    return {
+      whereEstado: `r.estado IN (${ESTADOS_CONFIRMADOS.map(() => '?').join(', ')})`,
+      estadoValues: ESTADOS_CONFIRMADOS,
+    }
+  }
+  return { whereEstado: '', estadoValues: [] }
+}
+
+async function getLogsByReporte(env, reporteIds) {
+  const ids = [...new Set(reporteIds.map(Number).filter(Boolean))]
+  const logsMap = new Map()
+  if (ids.length === 0) return logsMap
+
+  const placeholders = ids.map(() => '?').join(', ')
+  const { results } = await env.DB.prepare(
+    `SELECT
+       rs.id AS seguimiento_id,
+       rs.reporte_id,
+       rs.usuario_id,
+       trim(u.nombres || ' ' || COALESCE(u.apellido_paterno, '') || ' ' || COALESCE(u.apellido_materno, '')) AS usuario_nombre,
+       rs.estado,
+       rs.comentario,
+       rs.fecha_registro
+     FROM reportes_seguimiento rs
+     LEFT JOIN usuarios u ON u.id = rs.usuario_id
+     WHERE rs.reporte_id IN (${placeholders})
+     ORDER BY rs.fecha_registro ASC, rs.id ASC`
+  ).bind(...ids).all()
+
+  for (const log of results ?? []) {
+    if (!logsMap.has(log.reporte_id)) logsMap.set(log.reporte_id, [])
+    logsMap.get(log.reporte_id).push({
+      seguimiento_id: log.seguimiento_id,
+      estado: log.estado,
+      comentario: log.comentario,
+      usuario: log.usuario_nombre || 'Sistema',
+      fecha: log.fecha_registro,
+      hora: extractTime(log.fecha_registro),
+    })
+  }
+
+  return logsMap
+}
+
+async function getTecnicoById(env, tecnicoId) {
+  if (!Number.isFinite(tecnicoId)) return null
+  return env.DB.prepare(
+    `SELECT
+       id,
+       trim(nombres || ' ' || COALESCE(apellido_paterno, '') || ' ' || COALESCE(apellido_materno, '')) AS nombre_completo
+     FROM usuarios
+     WHERE id = ?`
+  ).bind(tecnicoId).first()
+}
+
+function buildTrabajo(row, logs) {
+  const cliente = buildNombreCliente(row)
+  const telefono = row.titular_telefono || row.cliente_telefono || row.prospecto_telefono || 'N/A'
+  const direccion = row.titular_direccion || row.cliente_direccion || row.prospecto_direccion || 'N/A'
+
+  return {
+    reporte_id: row.reporte_id,
+    tipo_reporte: row.tipo_reporte,
+    estado: row.estado,
+    estado_label: getEstadoLabel(row.estado),
+    hora: extractTime(row.fecha_evento),
+    fecha_evento: row.fecha_evento,
+    cliente,
+    telefono,
+    comunidad: row.comunidad_nombre || 'N/A',
+    direccion,
+    es_imprevista: row.origen === 'DIRECTA_TECNICO',
+    contrato_id: row.contrato_id ?? null,
+    contrato_numero: row.contrato_numero ?? null,
+    detalle: {
+      reporte_id: row.reporte_id,
+      tipo_reporte: row.tipo_reporte,
+      estado_actual: row.estado,
+      estado_label: getEstadoLabel(row.estado),
+      tecnico: row.tecnico_nombre || 'Tecnico sin nombre',
+      cliente,
+      telefono,
+      comunidad: row.comunidad_nombre || 'N/A',
+      direccion,
+      referencia: row.prospecto_referencia || 'N/A',
+      fecha_reportada: row.fecha_reportada,
+      fecha_asignacion: row.fecha_asignacion,
+      fecha_programada: row.fecha_programada,
+      fecha_inicio: findLogDate(logs, 'EN_PROCESO'),
+      fecha_cierre_tecnico: findLogDate(logs, 'PENDIENTE_CONFIRMACION') || row.cierre_fecha,
+      fecha_confirmacion: row.fecha_completado || findFirstConfirmacion(logs),
+      comentario_reporte: row.comentario || 'N/A',
+      comentario_cierre: row.comentario_cierre || row.cierre_comentario || row.comentario_tecnico || 'N/A',
+      caja: row.caja_nombre || row.codigo_caja || 'N/A',
+      terminal: row.caja_terminal_numero ?? row.terminal ?? 'N/A',
+      puerto: row.puerto ?? 'N/A',
+      potencia: row.potencia ?? null,
+      alfanumerico_equipo: row.alfanumerico_equipo || 'N/A',
+      paquete: row.paquete_nombre || 'N/A',
+      materiales: {
+        fibra_optica_metros: row.fibra_optica_metros ?? 0,
+        tensor_gancho: row.tensor_gancho ?? 0,
+        argollas: row.argollas ?? 0,
+        taquetes: row.taquetes ?? 0,
+        sujetadores: row.sujetadores ?? 0,
+        roseta: row.roseta ?? 0,
+      },
+      contrato_id: row.contrato_id ?? null,
+      contrato_numero: row.contrato_numero ?? null,
+      es_imprevista: row.origen === 'DIRECTA_TECNICO',
+      logs,
+    },
+  }
+}
+
+function buildNombreCliente(row) {
+  const titular = [
+    row.titular_nombres,
+    row.titular_apellido_paterno,
+    row.titular_apellido_materno,
+  ].filter(Boolean).join(' ').trim()
+
+  return titular || row.cliente_nombre || row.prospecto_nombre || 'N/A'
+}
+
+function getEstadoLabel(estado) {
+  if (estado === 'PENDIENTE_CONFIRMACION') return 'Terminado por tecnico'
+  if (estado === 'COMPLETADO') return 'Confirmado por soporte'
+  if (estado === 'FINALIZADO' || estado === 'CERRADO') return 'Completado'
+  return estado || 'N/A'
+}
+
+function findLogDate(logs, estado) {
+  return logs.find((log) => log.estado === estado)?.fecha || null
+}
+
+function findFirstConfirmacion(logs) {
+  return logs.find((log) => ESTADOS_CONFIRMADOS.includes(log.estado))?.fecha || null
+}
+
+function extractTime(dateStr) {
+  if (!dateStr || String(dateStr).length < 16) return 'N/A'
+  return String(dateStr).slice(11, 16)
+}
+
+function todayDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date())
 }

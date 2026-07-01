@@ -336,11 +336,14 @@ export async function previewCajasKml(request, env) {
 
   const formData = await request.formData().catch(() => null)
   const file = formData?.get('file') || formData?.get('archivo')
+  const comunidadId = Number(formData?.get('comunidad_id') || 0)
   const validation = validateKmlFile(file)
   if (validation.response) return validation.response
 
-  const kmlText = await file.text()
-  return json({ ok: true, ...parseKmlPlacemarks(kmlText) })
+  const kmlText = await readKmlTextFromFile(file)
+  const parsed = parseKmlPlacemarks(kmlText)
+  if (comunidadId) await markDuplicatePreviewItems(env, parsed.detected, comunidadId)
+  return json({ ok: true, archivo: file.name, ...buildKmlPreviewResponse(parsed) })
 }
 
 export async function importCajasKml(request, env) {
@@ -358,12 +361,26 @@ export async function importCajasKml(request, env) {
   const validation = validateKmlFile(file)
   if (validation.response) return validation.response
 
-  const parsed = parseKmlPlacemarks(await file.text())
-  const summary = { detected: parsed.detected.length, inserted: 0, duplicates: 0, ignored: parsed.ignored.length }
+  const parsed = parseKmlPlacemarks(await readKmlTextFromFile(file))
+  const summary = {
+    detected: parsed.detected.length,
+    points: parsed.points,
+    lines: parsed.lines,
+    inserted: 0,
+    duplicates: 0,
+    ignored: parsed.ignored.length,
+    review: parsed.detected.filter((item) => item.estado === 'REQUIERE_REVISION').length,
+  }
   const imported = []
   const duplicates = []
+  const review = []
 
   for (const item of parsed.detected) {
+    if (item.estado === 'REQUIERE_REVISION' || !item.codigo_caja) {
+      review.push(item)
+      continue
+    }
+
     const data = {
       comunidad_id: comunidadId,
       tipo: item.tipo,
@@ -394,7 +411,7 @@ export async function importCajasKml(request, env) {
     imported.push({ ...item, id: cajaId })
   }
 
-  return json({ ok: true, message: 'Importacion procesada', summary, imported, duplicates, ignored: parsed.ignored })
+  return json({ ok: true, message: 'Importacion procesada', summary, imported, duplicates, ignored: parsed.ignored, review })
 }
 
 async function validateCajaPayload(env, body, options = {}) {
@@ -566,10 +583,11 @@ function normalizeTerminalEstado(value) {
   return estado
 }
 function validateKmlFile(file) {
-  if (!file || typeof file.text !== 'function') return { response: json({ ok: false, error: 'Archivo KML obligatorio' }, 400) }
+  if (!file || typeof file.text !== 'function') return { response: json({ ok: false, error: 'Archivo KML o KMZ obligatorio' }, 400) }
   const fileName = String(file.name ?? '').toLowerCase()
-  if (fileName.endsWith('.kmz')) return { response: json({ ok: false, error: 'Por ahora solo se admite archivo .kml' }, 400) }
-  if (!fileName.endsWith('.kml')) return { response: json({ ok: false, error: 'Selecciona un archivo .kml' }, 400) }
+  if (!fileName.endsWith('.kml') && !fileName.endsWith('.kmz')) {
+    return { response: json({ ok: false, error: 'Selecciona un archivo .kml o .kmz' }, 400) }
+  }
   return {}
 }
 
@@ -577,61 +595,246 @@ function parseKmlPlacemarks(kmlText) {
   const placemarks = [...String(kmlText ?? '').matchAll(/<Placemark\b[\s\S]*?<\/Placemark>/gi)]
   const detected = []
   const ignored = []
+  let lines = 0
+  let polygons = 0
+  let points = 0
 
   for (const match of placemarks) {
     const placemark = match[0]
+    const nombreOriginal = decodeXml(extractTagText(placemark, 'name') || '')
+
+    if (/<LineString\b/i.test(placemark)) lines += 1
+    if (/<Polygon\b|<MultiGeometry\b/i.test(placemark)) polygons += 1
+
     if (/<LineString\b|<Polygon\b|<MultiGeometry\b/i.test(placemark)) {
-      ignored.push({ nombre: extractTagText(placemark, 'name') || 'Sin nombre', reason: 'No es punto de caja u OLT' })
+      ignored.push({ nombre: nombreOriginal || 'Sin nombre', reason: 'No es punto de caja u OLT', estado: 'IGNORADO' })
       continue
     }
 
-    const nombreOriginal = decodeXml(extractTagText(placemark, 'name') || '')
+    if (!/<Point\b/i.test(placemark)) {
+      ignored.push({ nombre: nombreOriginal || 'Sin nombre', reason: 'No es punto de caja u OLT', estado: 'IGNORADO' })
+      continue
+    }
+
+    points += 1
     const coords = extractCoordinates(placemark)
     if (!coords) {
-      ignored.push({ nombre: nombreOriginal || 'Sin nombre', reason: 'Sin coordenadas validas' })
+      ignored.push({ nombre: nombreOriginal || 'Sin nombre', reason: 'Sin coordenadas validas', estado: 'IGNORADO' })
       continue
     }
 
-    const cajaMatch = nombreOriginal.match(/pon\s*(\d+)\s*caja\s*(\d+)/i)
-    if (cajaMatch) {
-      const pon = Number(cajaMatch[1])
-      const numeroCaja = Number(cajaMatch[2])
-      const codigoCaja = generateCajaCode(pon, numeroCaja)
-      if (!codigoCaja) {
-        ignored.push({ nombre: nombreOriginal, reason: 'PON fuera de rango' })
-        continue
-      }
+    const inferred = inferKmlPoint(nombreOriginal)
+    if (inferred) {
       detected.push({
-        tipo: 'CAJA',
+        estado: 'LISTO',
         nombre_original_kml: nombreOriginal,
-        nombre: `CAJA ${codigoCaja}`,
-        pon,
-        numero_caja: numeroCaja,
-        codigo_caja: codigoCaja,
+        ...inferred,
         latitud: coords.latitud,
         longitud: coords.longitud,
       })
       continue
     }
 
-    if (/olt/i.test(nombreOriginal)) {
-      detected.push({
-        tipo: 'OLT',
-        nombre_original_kml: nombreOriginal,
-        nombre: normalizeUpper(nombreOriginal || 'OLT'),
-        pon: null,
-        numero_caja: null,
-        codigo_caja: null,
-        latitud: coords.latitud,
-        longitud: coords.longitud,
-      })
-      continue
-    }
-
-    ignored.push({ nombre: nombreOriginal || 'Sin nombre', reason: 'No es punto de caja u OLT' })
+    detected.push({
+      estado: isUntitledPoint(nombreOriginal) ? 'IGNORADO' : 'REQUIERE_REVISION',
+      tipo: null,
+      nombre_original_kml: nombreOriginal || 'Sin nombre',
+      nombre: nombreOriginal || 'Sin nombre',
+      pon: null,
+      numero_caja: null,
+      codigo_caja: null,
+      latitud: coords.latitud,
+      longitud: coords.longitud,
+      reason: isUntitledPoint(nombreOriginal) ? 'Nombre sin titulo o sin codigo claro' : 'No se pudo inferir codigo de caja',
+    })
   }
 
-  return { detected, ignored }
+  return { detected, ignored, points, lines, polygons }
+}
+
+function inferKmlPoint(nombreOriginal) {
+  const original = String(nombreOriginal ?? '').trim()
+  const text = normalizeKmlName(original)
+  if (!text || isUntitledPoint(text)) return null
+
+  if (/\b(OLT|CENTRAL)\b/.test(text)) {
+    return {
+      tipo: 'OLT',
+      nombre: normalizeUpper(original || 'OLT'),
+      pon: null,
+      numero_caja: null,
+      codigo_caja: 'OLT',
+    }
+  }
+
+  const ponCajaMatch = text.match(/\bPON\s*0*([1-4])\s*(?:CAJA|CJ|C)\s*0*(\d+)\b/)
+  if (ponCajaMatch) {
+    const pon = Number(ponCajaMatch[1])
+    const numeroCaja = Number(ponCajaMatch[2])
+    return buildCajaInference(original, pon, numeroCaja, extractBranchNumber(text))
+  }
+
+  const ponNumeroLetraMatch = text.match(/\bPON\s*0*(\d+)\s*([A-D])\b/)
+  if (ponNumeroLetraMatch) {
+    const numeroCaja = Number(ponNumeroLetraMatch[1])
+    const pon = branchLetterToPon(ponNumeroLetraMatch[2])
+    return buildCajaInference(original, pon, numeroCaja, extractBranchNumber(text))
+  }
+
+  const letterNumberMatch = text.match(/\b(?:CAJA\s*)?([A-D])\s*[-_]?\s*0*(\d+)\b/)
+  if (letterNumberMatch) {
+    const pon = branchLetterToPon(letterNumberMatch[1])
+    const numeroCaja = Number(letterNumberMatch[2])
+    return buildCajaInference(original, pon, numeroCaja, extractBranchNumber(text))
+  }
+
+  return null
+}
+
+function buildCajaInference(nombreOriginal, pon, numeroCaja, branchNumber = null) {
+  const baseCode = generateCajaCode(pon, numeroCaja)
+  if (!baseCode) return null
+  const codigoCaja = branchNumber ? `${baseCode}-BRZ${branchNumber}` : baseCode
+  return {
+    tipo: 'CAJA',
+    nombre: `CAJA ${codigoCaja}`,
+    pon,
+    numero_caja: numeroCaja,
+    codigo_caja: codigoCaja,
+  }
+}
+
+function extractBranchNumber(text) {
+  const match = String(text ?? '').match(/\b(?:BRZ|BRAZO|BRANCH|RAMAL)\s*0*(\d+)\b/)
+  if (!match) return null
+  const branchNumber = Number(match[1])
+  return Number.isInteger(branchNumber) && branchNumber > 0 ? branchNumber : null
+}
+
+function branchLetterToPon(letter) {
+  const normalized = String(letter ?? '').toUpperCase()
+  return normalized.charCodeAt(0) - 64
+}
+
+function normalizeKmlName(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_/-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function isUntitledPoint(value) {
+  const text = normalizeKmlName(value)
+  return !text || text === 'MARCADOR SIN TITULO' || text === 'PUNTO SIN NOMBRE' || text === 'SIN TITULO'
+}
+
+async function markDuplicatePreviewItems(env, items, comunidadId) {
+  for (const item of items) {
+    if (!item.codigo_caja || item.estado !== 'LISTO') continue
+    const existing = await env.DB.prepare(
+      'SELECT id FROM cajas_fibra WHERE comunidad_id = ? AND codigo_caja = ? LIMIT 1'
+    ).bind(comunidadId, item.codigo_caja).first()
+    if (existing) {
+      item.estado = 'DUPLICADO'
+      item.id = existing.id
+    }
+  }
+}
+
+function buildKmlPreviewResponse(parsed) {
+  const ready = parsed.detected.filter((item) => item.estado === 'LISTO').length
+  const duplicates = parsed.detected.filter((item) => item.estado === 'DUPLICADO').length
+  const review = parsed.detected.filter((item) => item.estado === 'REQUIERE_REVISION').length
+  const ignoredPoints = parsed.detected.filter((item) => item.estado === 'IGNORADO').length
+
+  return {
+    detected: parsed.detected,
+    ignored: parsed.ignored,
+    summary: {
+      points: parsed.points,
+      lines: parsed.lines,
+      polygons: parsed.polygons,
+      ignored: parsed.ignored.length + ignoredPoints,
+      duplicates,
+      ready,
+      review,
+    },
+  }
+}
+
+async function readKmlTextFromFile(file) {
+  const fileName = String(file.name ?? '').toLowerCase()
+  if (fileName.endsWith('.kml')) return file.text()
+  if (fileName.endsWith('.kmz')) return extractKmlTextFromKmz(await file.arrayBuffer())
+  throw new Error('Selecciona un archivo .kml o .kmz')
+}
+
+async function extractKmlTextFromKmz(arrayBuffer) {
+  const view = new DataView(arrayBuffer)
+  const centralDirectory = findZipCentralDirectory(view)
+  if (!centralDirectory) throw new Error('No se pudo leer el archivo KMZ. Verifica que sea valido.')
+
+  for (let offset = centralDirectory.offset; offset < centralDirectory.offset + centralDirectory.size;) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break
+    const compressionMethod = view.getUint16(offset + 10, true)
+    const compressedSize = view.getUint32(offset + 20, true)
+    const uncompressedSize = view.getUint32(offset + 24, true)
+    const fileNameLength = view.getUint16(offset + 28, true)
+    const extraLength = view.getUint16(offset + 30, true)
+    const commentLength = view.getUint16(offset + 32, true)
+    const localHeaderOffset = view.getUint32(offset + 42, true)
+    const fileName = decodeBytes(new Uint8Array(arrayBuffer, offset + 46, fileNameLength))
+
+    if (fileName.toLowerCase().endsWith('.kml') && !fileName.endsWith('/')) {
+      return extractZipEntryText(arrayBuffer, localHeaderOffset, compressionMethod, compressedSize, uncompressedSize)
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength
+  }
+
+  throw new Error('No se encontro un archivo KML dentro del KMZ.')
+}
+
+function findZipCentralDirectory(view) {
+  const minOffset = Math.max(0, view.byteLength - 0xffff - 22)
+  for (let offset = view.byteLength - 22; offset >= minOffset; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      return {
+        size: view.getUint32(offset + 12, true),
+        offset: view.getUint32(offset + 16, true),
+      }
+    }
+  }
+  return null
+}
+
+async function extractZipEntryText(arrayBuffer, localHeaderOffset, compressionMethod, compressedSize) {
+  const view = new DataView(arrayBuffer)
+  if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) {
+    throw new Error('No se pudo leer el KML dentro del KMZ.')
+  }
+  const fileNameLength = view.getUint16(localHeaderOffset + 26, true)
+  const extraLength = view.getUint16(localHeaderOffset + 28, true)
+  const dataOffset = localHeaderOffset + 30 + fileNameLength + extraLength
+  const compressedBytes = new Uint8Array(arrayBuffer, dataOffset, compressedSize)
+
+  if (compressionMethod === 0) return decodeBytes(compressedBytes)
+  if (compressionMethod === 8) {
+    if (typeof DecompressionStream !== 'function') {
+      throw new Error('Este entorno no puede descomprimir KMZ. Sube el archivo KML extraido.')
+    }
+    const stream = new Blob([compressedBytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+    return new Response(stream).text()
+  }
+
+  throw new Error('El KML dentro del KMZ usa una compresion no soportada.')
+}
+
+function decodeBytes(bytes) {
+  return new TextDecoder('utf-8').decode(bytes)
 }
 
 function extractCoordinates(placemark) {

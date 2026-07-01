@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import Swal from 'sweetalert2'
 import 'leaflet/dist/leaflet.css'
@@ -16,33 +16,47 @@ function inferCajaTipoYOrden(caja) {
   if (nomStr.includes('OLT')) {
     return { tipo: 'OLT', orden: 0 }
   }
+
+  const branchMatch = nomStr.match(/\b([A-D])\s*0*([0-9]+)\s*-\s*BRZ\s*0*([0-9]+)\b/)
+  if (branchMatch) {
+    const tipo = branchMatch[1]
+    const orden = Number(branchMatch[2])
+    const branchNumber = Number(branchMatch[3])
+    return {
+      tipo,
+      orden,
+      isBranch: true,
+      branchNumber,
+      parentCode: `${tipo}${orden}`,
+    }
+  }
   
   // Try pattern: "PON 12B" or "PON 02A" or "12B" or "02A" or "2A"
   const matchNumLetter = nomStr.match(/\b(?:PON\s*)?0*([0-9]+)\s*([A-D])\b/)
   if (matchNumLetter) {
-    return { tipo: matchNumLetter[2], orden: Number(matchNumLetter[1]) }
+    return { tipo: matchNumLetter[2], orden: Number(matchNumLetter[1]), isBranch: false }
   }
   
   // Try pattern: "A1" or "A-1" or "CAJA A1"
   const matchLetterNum = nomStr.match(/\b(?:CAJA\s*)?([A-D])\s*[-_]?\s*0*([0-9]+)\b/)
   if (matchLetterNum) {
-    return { tipo: matchLetterNum[1], orden: Number(matchLetterNum[2]) }
+    return { tipo: matchLetterNum[1], orden: Number(matchLetterNum[2]), isBranch: false }
   }
 
   // Split search
   const parts = nomStr.split(/[\s_-]+/)
   for (const part of parts) {
     const m1 = part.match(/^0*([0-9]+)([A-D])$/)
-    if (m1) return { tipo: m1[2], orden: Number(m1[1]) }
+    if (m1) return { tipo: m1[2], orden: Number(m1[1]), isBranch: false }
     
     const m2 = part.match(/^([A-D])\s*[-_]?\s*0*([0-9]+)$/)
-    if (m2) return { tipo: m2[1], orden: Number(m2[2]) }
+    if (m2) return { tipo: m2[1], orden: Number(m2[2]), isBranch: false }
   }
   
-  if (/\bA\b/.test(nomStr) || nomStr.endsWith('A')) return { tipo: 'A', orden: 9999 }
-  if (/\bB\b/.test(nomStr) || nomStr.endsWith('B')) return { tipo: 'B', orden: 9999 }
-  if (/\bC\b/.test(nomStr) || nomStr.endsWith('C')) return { tipo: 'C', orden: 9999 }
-  if (/\bD\b/.test(nomStr) || nomStr.endsWith('D')) return { tipo: 'D', orden: 9999 }
+  if (/\bA\b/.test(nomStr) || nomStr.endsWith('A')) return { tipo: 'A', orden: 9999, isBranch: false }
+  if (/\bB\b/.test(nomStr) || nomStr.endsWith('B')) return { tipo: 'B', orden: 9999, isBranch: false }
+  if (/\bC\b/.test(nomStr) || nomStr.endsWith('C')) return { tipo: 'C', orden: 9999, isBranch: false }
+  if (/\bD\b/.test(nomStr) || nomStr.endsWith('D')) return { tipo: 'D', orden: 9999, isBranch: false }
   
   return { tipo: 'SIN_TIPO', orden: 9999 }
 }
@@ -95,17 +109,6 @@ function createCustomCajaIcon(caja, zoomLevel) {
   })
 }
 
-function getLineColor(tipo) {
-  const normalized = String(tipo ?? '').toUpperCase().trim()
-  if (normalized === 'A') return '#ef4444'
-  if (normalized === 'B') return '#2563eb'
-  if (normalized === 'C') return '#22c55e'
-  if (normalized === 'D') return '#8b5cf6'
-  if (normalized === 'OLT') return '#f59e0b'
-  return '#64748b'
-}
-
-
 function MapEventsHandler({ onZoomChange }) {
   const map = useMapEvents({
     zoomend() {
@@ -138,105 +141,8 @@ function CajasFibra({ apiUrl, token }) {
   const [currentZoom, setCurrentZoom] = useState(14)
   const [mapLayer, setMapLayer] = useState('osm')
   const [showLegend, setShowLegend] = useState(false)
-  const [showLines, setShowLines] = useState(true)
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token])
-
-  const visualLines = useMemo(() => {
-    if (!showLines) return []
-    const lines = []
-    
-    // Group boxes by community
-    const communitiesGroups = {}
-    cajas.forEach(caja => {
-      if (Number.isFinite(Number(caja.latitud)) && Number.isFinite(Number(caja.longitud))) {
-        if (!communitiesGroups[caja.comunidad_id]) {
-          communitiesGroups[caja.comunidad_id] = []
-        }
-        communitiesGroups[caja.comunidad_id].push(caja)
-      }
-    })
-    
-    Object.keys(communitiesGroups).forEach(comId => {
-      const group = communitiesGroups[comId]
-      
-      // Find OLTs in this community
-      const olts = group.filter(c => c.tipo === 'OLT' || inferCajaTipoYOrden(c).tipo === 'OLT')
-      
-      // Group client boxes by branch (A, B, C, D)
-      const branches = { A: [], B: [], C: [], D: [] }
-      
-      group.forEach(caja => {
-        if (caja.tipo === 'OLT') return
-        const info = inferCajaTipoYOrden(caja)
-        if (info.tipo !== 'OLT' && info.tipo !== 'SIN_TIPO' && info.orden !== 9999) {
-          branches[info.tipo].push({
-            caja,
-            orden: info.orden
-          })
-        }
-      })
-      
-      // Process each branch
-      const branchKeys = ['A', 'B', 'C', 'D']
-      branchKeys.forEach(branchName => {
-        const branchBoxes = branches[branchName]
-        if (branchBoxes.length === 0) return
-        
-        // Sort branch boxes by sequence number ascending
-        branchBoxes.sort((a, b) => a.orden - b.orden)
-        
-        const firstBox = branchBoxes[0].caja
-        
-        // Connect OLT to the first box of the branch (picking the geographically closest OLT if multiple)
-        if (olts.length > 0) {
-          let olt = olts[0]
-          if (olts.length > 1) {
-            // Find OLT with minimum distance to the first client box
-            let minDistance = Infinity
-            const targetLat = Number(firstBox.latitud)
-            const targetLng = Number(firstBox.longitud)
-            olts.forEach(o => {
-              const oltLat = Number(o.latitud)
-              const oltLng = Number(o.longitud)
-              if (Number.isFinite(oltLat) && Number.isFinite(oltLng)) {
-                const dist = Math.sqrt(Math.pow(oltLat - targetLat, 2) + Math.pow(oltLng - targetLng, 2))
-                if (dist < minDistance) {
-                  minDistance = dist
-                  olt = o
-                }
-              }
-            })
-          }
-          
-          lines.push({
-            id: `line-${olt.id}-${firstBox.id}`,
-            positions: [
-              [Number(olt.latitud), Number(olt.longitud)],
-              [Number(firstBox.latitud), Number(firstBox.longitud)]
-            ],
-            tipo: branchName
-          })
-        }
-        
-        // Connect each box to the next within the same branch
-        for (let i = 0; i < branchBoxes.length - 1; i++) {
-          const currentBox = branchBoxes[i].caja
-          const nextBox = branchBoxes[i+1].caja
-          lines.push({
-            id: `line-${currentBox.id}-${nextBox.id}`,
-            positions: [
-              [Number(currentBox.latitud), Number(currentBox.longitud)],
-              [Number(nextBox.latitud), Number(nextBox.longitud)]
-            ],
-            tipo: branchName
-          })
-        }
-      })
-    })
-    
-    return lines
-  }, [cajas, showLines])
 
   const loadComunidades = useCallback(async () => {
     try {
@@ -525,7 +431,7 @@ function CajasFibra({ apiUrl, token }) {
 
   async function importKml() {
     const result = await Swal.fire({
-      title: 'Importar cajas desde KML',
+      title: 'Importar cajas desde KML/KMZ',
       html: renderKmlForm(comunidades, filters.comunidad_id),
       showCancelButton: true,
       confirmButtonText: 'Revisar archivo',
@@ -540,7 +446,7 @@ function CajasFibra({ apiUrl, token }) {
           return false
         }
         if (!file) {
-          Swal.showValidationMessage('Selecciona un archivo KML.')
+          Swal.showValidationMessage('Selecciona un archivo KML o KMZ.')
           return false
         }
         return { comunidadId, file }
@@ -550,6 +456,7 @@ function CajasFibra({ apiUrl, token }) {
 
     try {
       const previewForm = new FormData()
+      previewForm.append('comunidad_id', result.value.comunidadId)
       previewForm.append('file', result.value.file)
       const previewResponse = await fetch(`${apiUrl}/api/infraestructura/cajas/preview-kml`, {
         method: 'POST',
@@ -557,18 +464,13 @@ function CajasFibra({ apiUrl, token }) {
         body: previewForm,
       })
       const preview = await previewResponse.json()
-      if (!previewResponse.ok) throw new Error(preview.error ?? 'No se pudo revisar el KML.')
+      if (!previewResponse.ok) throw new Error(preview.error ?? 'No se pudo revisar el archivo.')
 
       const confirm = await Swal.fire({
-        icon: preview.detected?.length ? 'question' : 'warning',
-        title: 'Vista previa del KML',
-        html: `
-          <div class="infra-kml-summary">
-            <strong>${preview.detected?.length ?? 0}</strong><span>puntos detectados</span>
-            <strong>${preview.ignored?.length ?? 0}</strong><span>puntos ignorados</span>
-          </div>
-          <p class="infra-kml-note">Se importaran cajas y OLT detectadas como puntos. Lineas y poligonos se ignoran.</p>
-        `,
+        icon: preview.summary?.ready ? 'question' : 'warning',
+        title: 'Vista previa del archivo',
+        html: buildKmlPreviewHtml(preview),
+        width: 980,
         showCancelButton: true,
         confirmButtonText: 'Importar',
         cancelButtonText: 'Cancelar',
@@ -585,12 +487,12 @@ function CajasFibra({ apiUrl, token }) {
         body: importForm,
       })
       const imported = await importResponse.json()
-      if (!importResponse.ok) throw new Error(imported.error ?? 'No se pudo importar el KML.')
+      if (!importResponse.ok) throw new Error(imported.error ?? 'No se pudo importar el archivo.')
 
       await Swal.fire({
         icon: 'success',
         title: 'Importacion procesada',
-        text: `Insertadas: ${imported.summary?.inserted ?? 0}. Duplicadas: ${imported.summary?.duplicates ?? 0}. Ignoradas: ${imported.summary?.ignored ?? 0}.`,
+        text: `Insertadas: ${imported.summary?.inserted ?? 0}. Duplicadas: ${imported.summary?.duplicates ?? 0}. Revision: ${imported.summary?.review ?? 0}. Ignoradas: ${imported.summary?.ignored ?? 0}.`,
         confirmButtonColor: '#4274D9',
       })
       loadCajas()
@@ -608,7 +510,7 @@ function CajasFibra({ apiUrl, token }) {
           <p>Consulta cajas, OLT y terminales disponibles por comunidad.</p>
         </div>
         <div className="infra-header-actions">
-          <button type="button" className="fiber-secondary-button" onClick={importKml}>Importar KML</button>
+          <button type="button" className="fiber-secondary-button" onClick={importKml}>Importar KML/KMZ</button>
           <button type="button" className="fiber-primary-button" onClick={() => openCajaForm()}>Nueva caja</button>
         </div>
       </section>
@@ -646,22 +548,6 @@ function CajasFibra({ apiUrl, token }) {
             <MapRecenter center={mapCenter} />
             <MapEventsHandler onZoomChange={setCurrentZoom} />
             <MapResizeHandler trigger={selectedCaja ? selectedCaja.id : 'none'} />
-            
-            {/* Visual Fiber Lines */}
-            {visualLines.map(line => {
-              const color = getLineColor(line.tipo)
-              return (
-                <Polyline 
-                  key={line.id} 
-                  positions={line.positions} 
-                  color={color} 
-                  weight={2.5} 
-                  opacity={0.45} 
-                  lineCap="round" 
-                  lineJoin="round" 
-                />
-              )
-            })}
 
             {cajas.map((caja) => (
               <Marker
@@ -741,14 +627,6 @@ function CajasFibra({ apiUrl, token }) {
             >
               Satélite
             </button>
-            <button 
-              type="button" 
-              className={showLines ? 'active' : ''} 
-              style={{ borderLeft: '1px solid rgba(6, 26, 51, 0.12)' }}
-              onClick={() => setShowLines(!showLines)}
-            >
-              {showLines ? 'Ocultar Líneas' : 'Ver Líneas'}
-            </button>
           </div>
 
           <div className={`map-legend-box ${showLegend ? 'open' : ''}`}>
@@ -769,12 +647,6 @@ function CajasFibra({ apiUrl, token }) {
                 <div className="legend-item"><span className="border-indicator avail-green"></span> Con libres ({'>'}2)</div>
                 <div className="legend-item"><span className="border-indicator avail-yellow"></span> Pocas libres (1-2)</div>
                 <div className="legend-item"><span className="border-indicator avail-red"></span> Sin libres (0)</div>
-
-                <h4>Líneas de fibra</h4>
-                <div className="legend-item">
-                  <span style={{ width: '16px', height: '3px', background: '#3b82f6', display: 'inline-block', borderRadius: '2px' }}></span>
-                  <span>Enlace operativo</span>
-                </div>
               </div>
             )}
           </div>
@@ -1074,12 +946,68 @@ function renderKmlForm(comunidades, selectedComunidadId) {
           ${comunidades.map((comunidad) => `<option value="${comunidad.id}" ${String(selectedComunidadId) === String(comunidad.id) ? 'selected' : ''}>${escapeHtml(comunidad.nombre)}</option>`).join('')}
         </select>
       </label>
-      <label>Archivo KML
-        <input id="kml-file" type="file" accept=".kml,application/vnd.google-earth.kml+xml" />
+      <label>Archivo KML/KMZ
+        <input id="kml-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" />
       </label>
-      <p class="infra-kml-note">KMZ se importara despues. Por ahora selecciona un archivo .kml.</p>
+      <p class="infra-kml-note">Se importaran solo puntos/cajas. Las lineas del KML/KMZ no se guardaran.</p>
     </div>
   `
+}
+
+function buildKmlPreviewHtml(preview) {
+  const items = preview.detected ?? []
+  const summary = preview.summary ?? {}
+  const rows = items.slice(0, 80).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.nombre_original_kml || item.nombre || 'Sin nombre')}</td>
+      <td>${escapeHtml(item.tipo || '-')}</td>
+      <td>${escapeHtml(item.codigo_caja || '-')}</td>
+      <td>${formatPreviewCoordinate(item.latitud)}</td>
+      <td>${formatPreviewCoordinate(item.longitud)}</td>
+      <td><span class="infra-kml-status ${String(item.estado || '').toLowerCase()}">${escapeHtml(item.estado || 'IGNORADO')}</span></td>
+    </tr>
+  `).join('')
+
+  const moreRows = items.length > 80
+    ? `<p class="infra-kml-note">Se muestran 80 de ${items.length} puntos para mantener ligera la vista previa.</p>`
+    : ''
+
+  return `
+    <div class="infra-kml-preview">
+      <div class="infra-kml-summary">
+        <div><strong>${summary.points ?? 0}</strong><span>puntos detectados</span></div>
+        <div><strong>${summary.lines ?? 0}</strong><span>lineas detectadas</span></div>
+        <div><strong>${summary.ready ?? 0}</strong><span>listas para importar</span></div>
+        <div><strong>${summary.duplicates ?? 0}</strong><span>duplicadas</span></div>
+        <div><strong>${summary.review ?? 0}</strong><span>requieren revision</span></div>
+        <div><strong>${summary.ignored ?? 0}</strong><span>ignoradas</span></div>
+      </div>
+      <p class="infra-kml-note">Se importaran solo puntos/cajas. Las lineas del KML/KMZ no se guardaran.</p>
+      <div class="infra-kml-preview-table-wrap">
+        <table class="infra-kml-preview-table">
+          <thead>
+            <tr>
+              <th>Nombre original KML</th>
+              <th>Tipo</th>
+              <th>Codigo sugerido</th>
+              <th>Latitud</th>
+              <th>Longitud</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || '<tr><td colspan="6">No se detectaron puntos importables.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      ${moreRows}
+    </div>
+  `
+}
+
+function formatPreviewCoordinate(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(6) : '-'
 }
 
 function showError(message) {

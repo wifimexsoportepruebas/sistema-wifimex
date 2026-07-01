@@ -9,36 +9,37 @@
   flex-wrap: wrap;
   gap: 16px;
   align-items: flex-end;
-  background: #ffffff;
+  background: var(--fiber-white);
   padding: 20px 24px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(6, 26, 51, 0.05);
+  border-radius: var(--fiber-radius);
+  box-shadow: var(--fiber-shadow);
+  border: 1px solid var(--fiber-border);
 }
 
 .bitacora-filter-group {
   display: flex;
+  flex: 1;
+  min-width: 200px;
   flex-direction: column;
   gap: 6px;
-  min-width: 200px;
-  flex: 1;
 }
 
 .bitacora-filter-group label {
+  color: var(--fiber-muted);
   font-size: 0.8rem;
   font-weight: 750;
-  color: #64748b;
 }
 
 .bitacora-filter-group input,
 .bitacora-filter-group select {
   width: 100%;
   padding: 10px 14px;
+  border: 1px solid var(--fiber-border);
   border-radius: 12px;
-  border: 1px solid rgba(6, 26, 51, 0.12);
+  background: #f8fbfe;
+  color: var(--fiber-text);
   font: inherit;
   font-size: 0.9rem;
-  background: #f8fbfe;
   outline: none;
 }
 
@@ -48,254 +49,393 @@
   box-shadow: 0 0 0 3px rgba(66, 116, 217, 0.15);
 }
 
-/* Summary Grid */
+.bitacora-current-date {
+  color: var(--fiber-muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.bitacora-current-date strong {
+  color: var(--fiber-primary);
+}
+
 .bitacora-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 16px;
 }
 
 .bitacora-summary-card {
-  background: #ffffff;
-  border-radius: 18px;
-  padding: 16px 20px;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid rgba(6, 26, 51, 0.05);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
-  position: relative;
   overflow: hidden;
+  background: var(--fiber-white);
+  border: 1px solid var(--fiber-border);
+  border-left: 5px solid var(--fiber-primary);
+  border-radius: var(--fiber-radius);
+  box-shadow: 0 10px 25px rgba(41, 54, 129, 0.08);
+  padding: 16px 20px;
+}
+
+.bitacora-summary-card.pending {
+  border-left-color: var(--fiber-primary);
+}
+
+.bitacora-summary-card.confirmed {
+  border-left-color: #16a34a;
+}
+
+.bitacora-summary-card.techs {
+  border-left-color: var(--fiber-primary-dark);
 }
 
 .bitacora-summary-card-value {
-  font-size: 2.2rem;
+  color: var(--fiber-black);
+  font-size: 2.15rem;
   font-weight: 850;
-  color: #0f172a;
   line-height: 1;
 }
 
 .bitacora-summary-card-label {
+  color: var(--fiber-muted);
   font-size: 0.82rem;
-  font-weight: 700;
-  color: #64748b;
+  font-weight: 750;
 }
 
-/* Sections for each Technician */
-.bitacora-tech-section {
-  background: #ffffff;
-  border-radius: 24px;
-  border: 1px solid rgba(6, 26, 51, 0.05);
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.03);
-  padding: 24px;
+.bitacora-tech-list {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
+.bitacora-empty,
+.bitacora-empty-card {
+  margin: 0;
+  background: var(--fiber-white);
+  border: 1px solid var(--fiber-border);
+  border-radius: var(--fiber-radius);
+  color: var(--fiber-muted);
+  font-weight: 700;
+  padding: 34px;
+  text-align: center;
+}
+
+.bitacora-tech-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--fiber-white);
+  border: 1px solid var(--fiber-border);
+  border-radius: var(--fiber-radius);
+  box-shadow: 0 12px 32px rgba(41, 54, 129, 0.1);
+  padding: 22px;
+}
+
+.bitacora-tech-section.empty p {
+  margin: 4px 0 0;
+  color: var(--fiber-muted);
+}
+
 .bitacora-tech-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid rgba(6, 26, 51, 0.06);
+  border-bottom: 1px solid var(--fiber-border);
   padding-bottom: 14px;
 }
 
 .bitacora-tech-title {
-  font-size: 1.25rem;
+  margin: 0;
+  color: var(--fiber-black);
+  font-size: 1.2rem;
   font-weight: 850;
-  color: #0f172a;
+}
+
+.bitacora-tech-header p {
+  margin: 4px 0 0;
+  color: var(--fiber-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .bitacora-tech-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  font-size: 0.8rem;
+  gap: 8px;
 }
 
 .bitacora-tech-badge {
-  padding: 4px 10px;
   border-radius: 999px;
-  font-weight: 750;
-}
-
-.bitacora-tech-badge.total { background: #f1f5f9; color: #475569; }
-.bitacora-tech-badge.completada { background: #dcfce7; color: #15803d; }
-.bitacora-tech-badge.confirmacion { background: #dbeafe; color: #1d4ed8; }
-.bitacora-tech-badge.proceso { background: #fef3c7; color: #b45309; }
-.bitacora-tech-badge.reagendada { background: #ffedd5; color: #c2410c; }
-
-/* Timeline vertical layout */
-.bitacora-timeline {
-  position: relative;
-  border-left: 2px solid rgba(6, 26, 51, 0.08);
-  margin-left: 20px;
-  padding-left: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.bitacora-event-node {
-  position: relative;
-}
-
-.bitacora-event-node::before {
-  content: '';
-  position: absolute;
-  left: -37px;
-  top: 8px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 3px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  z-index: 2;
-}
-
-/* Event Dot Colors */
-.event-node-completado::before { background: #10b981; }
-.event-node-pendiente_confirmacion::before { background: #3b82f6; }
-.event-node-en_proceso::before { background: #f59e0b; }
-.event-node-asignado::before, .event-node-pendiente::before { background: #94a3b8; }
-.event-node-cancelado::before { background: #ef4444; }
-.event-node-no_localizado::before { background: #ec4899; }
-.event-node-reagendado::before { background: #f97316; }
-
-.bitacora-event-card {
-  background: #f8fafc;
-  border-radius: 16px;
-  border: 1px solid rgba(6, 26, 51, 0.04);
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: all 0.2s ease;
-}
-
-.bitacora-event-card:hover {
-  background: #f1f5f9;
-  border-color: rgba(6, 26, 51, 0.08);
-}
-
-.bitacora-event-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.bitacora-event-card-time-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.bitacora-event-time {
-  font-size: 0.95rem;
-  font-weight: 850;
-  color: #0f172a;
-  background: #ffffff;
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(6, 26, 51, 0.06);
-}
-
-.bitacora-event-title {
-  font-weight: 750;
-  color: #1e293b;
-  font-size: 0.95rem;
-}
-
-.bitacora-event-desc {
-  font-size: 0.88rem;
-  color: #475569;
-  line-height: 1.4;
-}
-
-.bitacora-event-client-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 8px;
-  font-size: 0.82rem;
-  color: #64748b;
-  background: #ffffff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(6, 26, 51, 0.03);
-}
-
-.bitacora-event-client-info span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bitacora-event-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  border-top: 1px solid rgba(6, 26, 51, 0.04);
-  padding-top: 10px;
-}
-
-.bitacora-badges-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bitacora-badge {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 5px 10px;
+}
+
+.bitacora-tech-badge.total {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.bitacora-tech-badge.completada {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.bitacora-tech-badge.confirmacion {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.bitacora-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bitacora-work-card {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 14px;
+  align-items: stretch;
+  border: 1px solid rgba(41, 54, 129, 0.1);
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.bitacora-work-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  border-radius: 10px;
+  background: var(--fiber-white);
+  color: var(--fiber-primary-dark);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.bitacora-work-body {
+  min-width: 0;
+}
+
+.bitacora-work-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.bitacora-work-title-row h3 {
+  margin: 0 0 4px;
+  color: var(--fiber-black);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.bitacora-work-title-row p {
+  margin: 0;
+  color: var(--fiber-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.bitacora-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 850;
+  padding: 6px 10px;
   text-transform: uppercase;
 }
 
-.bitacora-badge.instalacion { background: #e0f2fe; color: #0369a1; }
-.bitacora-badge.detalle { background: #f3e8ff; color: #6b21a8; }
-.bitacora-badge.imprevista { background: #fee2e2; color: #991b1b; }
-.bitacora-badge.caja { background: #f0fdf4; color: #166534; }
+.bitacora-status.pendiente_confirmacion {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
 
-/* Detail labels */
+.bitacora-status.completado,
+.bitacora-status.finalizado,
+.bitacora-status.cerrado {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.bitacora-status.cancelado {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.bitacora-work-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+  color: var(--fiber-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.bitacora-work-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid rgba(41, 54, 129, 0.1);
+  padding-top: 12px;
+}
+
+.bitacora-work-actions .fiber-secondary-button {
+  min-height: auto;
+  padding: 9px 16px;
+}
+
+.bitacora-muted {
+  color: var(--fiber-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.bitacora-detail-modal {
+  width: min(900px, 100%);
+  max-height: 92vh;
+}
+
+.bitacora-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.bitacora-detail-section h4,
+.bitacora-log-section h4 {
+  margin: 0 0 10px;
+  color: var(--fiber-primary-dark);
+  font-size: 0.9rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .bitacora-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-  background: #f8fafc;
-  padding: 16px 20px;
-  border-radius: 14px;
+  gap: 12px;
   border: 1px solid #e2e8f0;
-  font-size: 0.88rem;
-  margin-bottom: 20px;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px;
 }
 
 .bitacora-detail-item {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
+}
+
+.bitacora-detail-item.wide {
+  grid-column: 1 / -1;
 }
 
 .bitacora-detail-item span {
-  font-size: 0.75rem;
-  color: #64748b;
-  font-weight: 700;
+  color: var(--fiber-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .bitacora-detail-item strong {
-  color: #0f172a;
+  color: var(--fiber-black);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.bitacora-log-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.bitacora-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bitacora-log-item {
+  display: grid;
+  grid-template-columns: 150px 160px 1fr;
+  gap: 10px;
+  align-items: start;
+  border-radius: 10px;
+  background: var(--fiber-white);
+  padding: 10px 12px;
+  color: var(--fiber-text);
+  font-size: 0.82rem;
+}
+
+.bitacora-log-item span,
+.bitacora-log-item small {
+  color: var(--fiber-muted);
+  font-weight: 700;
+}
+
+.bitacora-log-item strong {
+  color: var(--fiber-primary-dark);
+  font-weight: 850;
+}
+
+.bitacora-log-item p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.bitacora-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid var(--fiber-border);
+  padding-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .bitacora-filters-bar,
+  .bitacora-tech-section,
+  .bitacora-detail-content {
+    padding: 16px;
+  }
+
+  .bitacora-work-card {
+    grid-template-columns: 1fr;
+  }
+
+  .bitacora-work-time {
+    justify-content: flex-start;
+    min-height: auto;
+    padding: 8px 10px;
+  }
+
+  .bitacora-work-title-row {
+    flex-direction: column;
+  }
+
+  .bitacora-work-actions {
+    justify-content: flex-start;
+  }
+
+  .bitacora-detail-grid,
+  .bitacora-log-item {
+    grid-template-columns: 1fr;
+  }
 }
